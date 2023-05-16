@@ -10,6 +10,7 @@ import warnings
 
 import numpy as np
 from termcolor import colored
+import torch
 
 from naslib.predictors.gp.gpwl_utils.vertex_histogram import CustomVertexHistogram
 from sklearn.exceptions import NotFittedError
@@ -90,6 +91,9 @@ class Heat(Kernel):
         self.feature_dims = [
             0,
         ]  # Record the dimensions of the vectors of each WL iteration
+        self.sigma2 = torch.tensor(0.5, dtype=torch.float32, requires_grad=True) #FIXME
+        self.kappa2 = torch.tensor(5, dtype=torch.float32, requires_grad=True) #FIXME
+            
 
     def initialize(self):
         """Initialize all transformer arguments, needing initialization."""
@@ -220,23 +224,19 @@ class Heat(Kernel):
 
                 return dist
 
-            # initialize the matrix
-            K = np.zeros((len(graph_list), len(graph_list)))
+            # initialize the matrix as a torch tensor
+            K = torch.empty(len(graph_list), len(graph_list))
 
-            # convert numpy array to integer numpy array
-            # graph_list = [np.array(graph_list[i], dtype=int) for i in range(len(graph_list))]
-
-            sigma2 = 0.5 #FIXME
-            kappa2 = 5 #FIXME
-            
             # compute the bitwise xor operation between all pairs
             for i in range(len(graph_list)):
                 for j in range(i + 1, len(graph_list)):
-                    K[i, j] = sigma2*(tanh(kappa2/2)**hamming_distance_with_labels(graph_list[i], graph_list[j]))
-                    K[j, i] = K[i, j]
+                    K_new = self.sigma2 * (torch.tanh(self.kappa2/2)**hamming_distance_with_labels(graph_list[i], graph_list[j]))
+                    K[i, j] = K_new
+                    K[j, i] = K_new
             
             # replace diagonal elements with 1
-            np.fill_diagonal(K, 1)
+            for i in range(len(graph_list)):
+                K[i, i] = 1
 
         base_graph_kernel = None # empty dummy variable
 
