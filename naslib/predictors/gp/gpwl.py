@@ -5,6 +5,7 @@
 from copy import deepcopy
 
 from grakel.utils import graph_from_networkx
+from termcolor import colored
 
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *

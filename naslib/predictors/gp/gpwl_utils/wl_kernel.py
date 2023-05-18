@@ -8,6 +8,7 @@ import collections
 import warnings
 
 import numpy as np
+from termcolor import colored
 
 from naslib.predictors.gp.gpwl_utils.vertex_histogram import CustomVertexHistogram
 from sklearn.exceptions import NotFittedError
@@ -380,6 +381,7 @@ class WeisfeilerLehman(Kernel):
         else:
             km, self.X = self.parse_input(X)
 
+        print(colored(km.shape, "red"))
         return km
 
     def transform(

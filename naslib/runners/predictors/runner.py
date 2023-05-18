@@ -3,6 +3,8 @@ import logging
 from naslib.defaults.predictor_evaluator import PredictorEvaluator
 from naslib.utils.encodings import EncodingType
 
+from naslib.predictors.gp.gp_heat import GPHeatPredictor #TODO: write this in a more 'clean' way, by adding it to the list below
+
 from naslib.predictors import (
     BayesianLinearRegression,
     BOHAMIANN,
@@ -167,7 +169,13 @@ dataset_api = get_dataset_api(config.search_space, config.dataset)
 
 # initialize the search space and predictor
 utils.set_seed(config.seed)
-predictor = supported_predictors[config.predictor]
+# predictor = supported_predictors[config.predictor]
+predictor = GPHeatPredictor( #TODO: see todo above
+        ss_type=config.search_space,
+        kernel_type="wloa",
+        optimize_gp_hyper=True,
+        h="auto",
+)
 search_space = supported_search_spaces[config.search_space]
 
 # initialize the PredictorEvaluator class

@@ -10,7 +10,7 @@ from termcolor import colored
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *
 from naslib.predictors.gp.gpwl_utils.vertex_histogram import CustomVertexHistogram
-from naslib.predictors.gp.gpwl_utils.heat_kernel import Heat
+from naslib.predictors.gp.gpwl_utils.heat_kernel_4 import Heat
 
 
 def _normalize(y):
@@ -352,13 +352,20 @@ class GraphGP:
             likelihood = torch.tensor(
                 self.likelihood, dtype=torch.float32, requires_grad=True
             )
-            optim = torch.optim.Adam([likelihood], lr=0.1)
+            optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.1)
             for i in range(self.num_steps):
                 optim.zero_grad()
-                K_i, logDetK = _compute_pd_inverse(K, likelihood)
+                K = self.gkernel.fit_transform(xtrain_grakel, self.y)
+                K_i, logDetK = _compute_pd_inverse(K, likelihood) 
                 nlml = -_compute_log_marginal_likelihood(K_i, logDetK, self.y)
                 nlml.backward()
+                print(f"Gradient of sigma2: {self.gkernel.sigma2.grad}")
+                print(f"Gradient of kappa2: {self.gkernel.kappa2.grad}")
+                print()
                 optim.step()
+                print(colored("likelihood: ", "red"), likelihood.item())
+                print(colored("sigma2: ", "red"), self.gkernel.sigma2.item())
+                print(colored("kappa2: ", "red"), self.gkernel.kappa2.item())
                 with torch.no_grad():
                     likelihood.clamp_(1e-7, self.max_noise_var)
             # finally

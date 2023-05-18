@@ -9,6 +9,7 @@ import torch
 from scipy import stats
 from sklearn import metrics
 import math
+import simplejson as json
 
 from naslib.search_spaces.core.query_metrics import Metric
 from naslib.utils import generate_kfold, cross_validation
@@ -536,5 +537,19 @@ class PredictorEvaluator(object):
                         res[key] = int(value)
                     if type(value) == np.float32 or type(value) == np.float64:
                         res[key] = float(value)
+            
+            json.dump(self.results, file, separators=(",", ":"), cls=NumpyEncoder)
 
-            json.dump(self.results, file, separators=(",", ":"))
+class NumpyEncoder(json.JSONEncoder):
+            """ Special json encoder for numpy types """
+            def default(self, obj):
+                if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+                                    np.int16, np.int32, np.int64, np.uint8,
+                                    np.uint16,np.uint32, np.uint64)):
+                    return int(obj)
+                elif isinstance(obj, (np.float_, np.float16, np.float32,
+                                    np.float64)):
+                    return float(obj)
+                elif isinstance(obj, (np.ndarray,)):
+                    return obj.tolist()
+                return json.JSONEncoder.default(self, obj)

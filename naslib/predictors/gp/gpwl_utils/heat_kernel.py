@@ -226,7 +226,6 @@ class Heat(Kernel):
                         + "a graph like object and node labels "
                         + "dict \n"
                     )
-        
                 x = x.get_adjacency_matrix()
                 graph_list.append(x)
 
