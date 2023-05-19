@@ -7,6 +7,7 @@
 import collections
 from itertools import permutations, product
 from math import tanh
+import random
 import warnings
 
 import numpy as np
@@ -92,8 +93,8 @@ class Heat(Kernel):
         self.feature_dims = [
             0,
         ]  # Record the dimensions of the vectors of each WL iteration
-        self.sigma2 = torch.tensor(0.05, dtype=torch.float32, requires_grad=True) #FIXME
-        self.kappa2 = torch.tensor(0.05, dtype=torch.float32, requires_grad=True) #FIXME
+        self.sigma2 = torch.tensor(0.7, dtype=torch.float32, requires_grad=True) #FIXME
+        self.kappa2 = torch.tensor(1.1, dtype=torch.float32, requires_grad=True) #FIXME
             
 
     def initialize(self):
@@ -245,44 +246,35 @@ class Heat(Kernel):
                 return int(diff_bits)
             
             def generate_groups(n, m):
-                # Generate the numbers from 0 to n*m
-                numbers = list(range(n*m))
+                return [list(range(i*m, (i+1)*m)) for i in range(n)]
 
-                # Split the numbers into groups
-                groups = [numbers[i:i+m] for i in range(0, len(numbers), m)]
-
-                return groups
-
-            def generate_permutations(n, m):
-                # Generate the groups
+            def sample_permutations(n, m, x):
                 groups = generate_groups(n, m)
-
-                # Generate all permutations of each group
-                permuted_groups = [list(permutations(group)) for group in groups]
-
-                # Create a list of dictionaries, each representing a permutation
                 output = []
-                for permutation_product in product(*permuted_groups):
-                    perm_dict = {}
-                    for original_group, permuted_group in zip(groups, permutation_product):
-                        perm_dict.update(dict(zip(original_group, permuted_group)))
-                    output.append(perm_dict)
-
+                for _ in range(x):
+                    sampled_permutation = {item: item for item in range(n*m)}  # initialize with no permutation
+                    for group in groups:
+                        permuted_group = random.sample(group, len(group))  # permute each group individually
+                        sampled_permutation.update(dict(zip(group, permuted_group)))  # update the permutation
+                    output.append(sampled_permutation)
                 return output
 
             # Define your parameters
             n, m = 6, 9
+            x = 25
 
             # Generate all permutations
-            all_permutations = generate_permutations(n, m)
+            sampled_permutations = sample_permutations(n, m, x)
 
-            def compute_kernel(graph1, graph2, all_permutations):
+            def compute_kernel(graph1, graph2, sampled_permutations):
                 # Initialize the kernel
                 kernel = 0
+                graph1 = create_new_graph(graph1)
+                graph2 = create_new_graph(graph2)
 
                 # Iterate through all permutations
-                for permutation_1 in all_permutations:
-                    for permutation_2 in all_permutations:
+                for permutation_1 in sampled_permutations:
+                    for permutation_2 in sampled_permutations:
                         
                         # Compute the kernel for the current permutation
                         kernel_permutation = compute_kernel_permutation(graph1, graph2, permutation_1, permutation_2)
@@ -291,12 +283,15 @@ class Heat(Kernel):
                         kernel += kernel_permutation
 
                 # Normalize the kernel
-                kernel /= (len(all_permutations)**2)
+                kernel /= (len(sampled_permutations)**2)
 
                 return kernel
             
             def compute_kernel_permutation(graph1, graph2, permutation_1, permutation_2):
 
+                # print(colored(permutation_1, 'green'))
+                # print(colored(permutation_2, 'green'))
+                
                 modified_graph1 = nx.relabel_nodes(graph1, permutation_1)
                 modified_graph2 = nx.relabel_nodes(graph2, permutation_2)
 
@@ -314,7 +309,7 @@ class Heat(Kernel):
             # compute the bitwise xor operation between all pairs
             for i in range(len(graph_list)):
                 for j in range(i + 1, len(graph_list)):
-                    K_new = compute_kernel(graph_list[i], graph_list[j], all_permutations)
+                    K_new = compute_kernel(graph_list[i], graph_list[j], sampled_permutations)
                     K[i, j] = K_new
                     K[j, i] = K_new
             
