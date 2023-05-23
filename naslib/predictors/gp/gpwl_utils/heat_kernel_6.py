@@ -248,9 +248,8 @@ class Heat(Kernel):
 
 
             # Generate all permutations
-            # sampled_permutations = torch.tensor(sample_permutations(n, m, x))
+            sampled_permutations = torch.tensor(sample_permutations(n, m, x))
             # sampled_permutations = generate_permutations(n, m)
-            sampled_permutations = torch.tensor([[2, 3, 4, 5, 6, 7, 8], [9, 10, 11, 12, 13, 14, 15], [16, 17, 18, 19, 20, 21, 22]])
 
             @torch.jit.script
             def compute_all_diff_bits(graph_array, sampled_permutations):
