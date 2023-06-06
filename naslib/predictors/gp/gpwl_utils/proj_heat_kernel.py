@@ -27,7 +27,7 @@ class HeatKernel:
         Tensor storing the permutations of graphs to be compared.
     """
 
-    def __init__(self, sigma=3, kappa=0.05, n_approx=10):
+    def __init__(self, sigma=3, kappa=0.05, n_approx=50):
         self.sigma = torch.tensor(sigma, dtype=torch.float32, requires_grad=True)
         self.kappa = torch.tensor(kappa, dtype=torch.float32, requires_grad=True)
         self.n_approx = n_approx
@@ -38,19 +38,16 @@ class HeatKernel:
     def fit_transform(self, X, y=None):
         if not isinstance(X, collections.Iterable):
             raise TypeError("Input must be an iterable.")
-
         # Input validation and parsing
         if not self.cached:
             self.all_diff_bits = self._process_input(X)
             self.cached = True
-
         return self._compute_kernel(self.all_diff_bits)
 
     def _process_input(self, X):
         graph_list = self._create_new_graphs(X)
         graph_array = torch.stack(graph_list)
         self._generate_permutations()
-
         return self._compute_all_diff_bits(graph_array)
 
     def _create_new_graphs(self, X):
@@ -98,7 +95,6 @@ class HeatKernel:
             [9, 10, 11, 12, 13, 14, 15],
             [16, 17, 18, 19, 20, 21, 22],
         ]
-
         if self.permutations is None:
             self.permutations = torch.tensor(
                 self._sample_permutations(groups, self.n_approx)
@@ -143,12 +139,9 @@ class HeatKernel:
         kernel = torch.zeros(
             all_diff_bits.shape[1], all_diff_bits.shape[2], requires_grad=True
         )
-
         for i in range(all_diff_bits.shape[0]):
             kernel = kernel + torch.square(self.sigma) * (
                 torch.tanh((torch.square(self.kappa)) / 2) ** all_diff_bits[i]
             )
-
         kernel /= all_diff_bits.shape[0]
-
         return kernel

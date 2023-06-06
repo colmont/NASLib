@@ -9,7 +9,8 @@ from termcolor import colored
 
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *
-from naslib.predictors.gp.gpwl_utils.proj_heat_kernel import HeatKernel as Heat
+from naslib.predictors.gp.gpwl_utils.heat_kernel import HeatKernel as Heat
+from naslib.predictors.gp.gpwl_utils.proj_heat_kernel import HeatKernel as ProjHeat
 
 
 def _normalize(y):
@@ -103,9 +104,11 @@ class GraphGP:
         max_noise_var=1e-1,
         optimize_noise_var=True,
         node_label="op_name",
+        projected=False,
     ):
         self.likelihood = noise_var
         self.space = space
+        self.projected = projected
 
         self.gkernel = None
         # only applicable for the DARTS search space, where we optimise two graphs jointly.
@@ -273,8 +276,14 @@ class GraphGP:
 
     def fit(self):
         xtrain_grakel = self.xtrain_converted
-        self.gkernel = Heat()
-        self.gkernel_reduce = Heat()
+
+        if self.projected:
+            self.gkernel = ProjHeat()
+            self.gkernel_reduce = ProjHeat()
+        else:
+            self.gkernel = Heat()
+            self.gkernel_reduce = Heat()
+
         if self.space == "nasbench301" or self.space == "darts":
             K = (
                 torch.tensor(
@@ -337,6 +346,7 @@ class GPHeatPredictor(BaseGPModel):
         ss_type="nasbench201",
         optimize_gp_hyper=False,
         num_steps=200,
+        projected=False,
     ):
         super(GPHeatPredictor, self).__init__(
             encoding_type=None,
@@ -347,6 +357,7 @@ class GPHeatPredictor(BaseGPModel):
         self.num_steps = num_steps
         self.need_separate_hpo = True
         self.model = None
+        self.projected = projected
 
     def _convert_data(self, data: list):
         if self.ss_type == "nasbench101":
@@ -375,6 +386,7 @@ class GPHeatPredictor(BaseGPModel):
             num_steps=self.num_steps,
             optimize_noise_var=self.optimize_gp_hyper,
             space=self.ss_type,
+            projected=self.projected,
         )
         # fit the model
         self.model.fit()
@@ -388,7 +400,6 @@ class GPHeatPredictor(BaseGPModel):
         return mean
 
     def fit(self, xtrain, ytrain, train_info=None, params=None, **kwargs):
-        # if not isinstance(xtrain[0], nx.DiGraph):
         xtrain_conv = self._convert_data(xtrain)
         ytrain_transformed = _transform(ytrain)
 
@@ -398,6 +409,7 @@ class GPHeatPredictor(BaseGPModel):
             num_steps=self.num_steps,
             optimize_noise_var=self.optimize_gp_hyper,
             space=self.ss_type,
+            projected=self.projected,
         )
         # fit the model
         self.model.fit()
