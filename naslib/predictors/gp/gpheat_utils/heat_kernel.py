@@ -1,14 +1,13 @@
 import collections
 import numpy as np
 import torch
-from tqdm import tqdm
 
 
 class HeatKernel:
     """
     HeatKernel class is used for Gaussian process regression.
 
-    Projected heat kernel as described in Borovitskiy et al. (2023). This implementation uses a bit-wise operation
+    Heat kernel as described in Borovitskiy et al. (2023). This implementation uses a bit-wise operation
     for efficient computation and also makes use of caching for re-use of similarity computations.
 
     Attributes
@@ -17,14 +16,10 @@ class HeatKernel:
         A hyperparameter in the kernel function.
     kappa : torch.Tensor
         Another hyperparameter in the kernel function.
-    n_approx : int
-        Number of permutations to be generated for graph comparisons.
     cached : bool
         A boolean flag to indicate if the all_diff_bits have been computed and cached.
     all_diff_bits : torch.Tensor
         Tensor storing the difference in bits between graphs. Used for efficient computation of the kernel.
-    permutations : torch.Tensor
-        Tensor storing the permutations of graphs to be compared.
     """
 
     def __init__(self, sigma=3, kappa=0.05):
