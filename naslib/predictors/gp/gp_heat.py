@@ -9,7 +9,7 @@ from termcolor import colored
 
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *
-from naslib.predictors.gp.gpwl_utils.heat_kernel import Heat
+from naslib.predictors.gp.gpwl_utils.proj_heat_kernel import HeatKernel as Heat
 
 
 def _normalize(y):
@@ -49,7 +49,7 @@ def _compute_pd_inverse(K, jitter=1e-5):
     max_fail = 3
     while fail_count < max_fail and not is_successful:
         try:
-            jitter_diag = jitter * torch.eye(n, device=K.device) * 10 ** fail_count
+            jitter_diag = jitter * torch.eye(n, device=K.device) * 10**fail_count
             K_ = K + jitter_diag
             Kc = torch.linalg.cholesky(K_)
             is_successful = True
@@ -167,7 +167,6 @@ class GraphGP:
         Xnew,
         full_cov=False,
     ):
-
         self.gkernel.cached = False
 
         if self.K_i is None:
@@ -260,7 +259,7 @@ class GraphGP:
         mu_s = unnormalize_y(mu_s, self.y_mean, self.y_std)
         std_s = torch.sqrt(cov_s)
         std_s = unnormalize_y(std_s, None, self.y_std, True)
-        cov_s = std_s ** 2
+        cov_s = std_s**2
         if not full_cov:
             cov_s = torch.diag(cov_s)
         # replace the invalid architectures with zeros
@@ -273,7 +272,6 @@ class GraphGP:
         return mu_s, cov_s
 
     def fit(self):
-
         xtrain_grakel = self.xtrain_converted
         self.gkernel = Heat()
         self.gkernel_reduce = Heat()
@@ -302,20 +300,22 @@ class GraphGP:
                 self.likelihood, dtype=torch.float32, requires_grad=True
             )
             # optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.01)
-            optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.01)
+            optim = torch.optim.Adam(
+                [likelihood, self.gkernel.sigma, self.gkernel.kappa], lr=0.01
+            )
             for i in range(self.num_steps):
                 optim.zero_grad()
                 K = self.gkernel.fit_transform(xtrain_grakel, self.y)
-                K_i, logDetK = _compute_pd_inverse(K, likelihood) 
+                K_i, logDetK = _compute_pd_inverse(K, likelihood)
                 nlml = -_compute_log_marginal_likelihood(K_i, logDetK, self.y)
                 nlml.backward()
                 print(nlml)
-                print(f"Gradient of sigma2: {self.gkernel.sigma2.grad}")
-                print(f"Gradient of kappa2: {self.gkernel.kappa2.grad}")
+                print(f"Gradient of sigma2: {self.gkernel.sigma.grad}")
+                print(f"Gradient of kappa2: {self.gkernel.kappa.grad}")
                 optim.step()
                 print(colored("likelihood: ", "red"), likelihood.item())
-                print(colored("sigma2: ", "red"), self.gkernel.sigma2.item())
-                print(colored("kappa2: ", "red"), self.gkernel.kappa2.item())
+                print(colored("sigma2: ", "red"), self.gkernel.sigma.item())
+                print(colored("kappa2: ", "red"), self.gkernel.kappa.item())
                 print()
                 with torch.no_grad():
                     likelihood.clamp_(1e-7, self.max_noise_var)
@@ -339,7 +339,10 @@ class GPHeatPredictor(BaseGPModel):
         num_steps=200,
     ):
         super(GPHeatPredictor, self).__init__(
-            encoding_type=None, ss_type=ss_type, kernel_type=None, optimize_gp_hyper=optimize_gp_hyper
+            encoding_type=None,
+            ss_type=ss_type,
+            kernel_type=None,
+            optimize_gp_hyper=optimize_gp_hyper,
         )
         self.num_steps = num_steps
         self.need_separate_hpo = True
