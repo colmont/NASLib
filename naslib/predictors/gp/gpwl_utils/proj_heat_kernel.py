@@ -91,8 +91,16 @@ class Heat(Kernel):
         self.feature_dims = [
             0,
         ]  # Record the dimensions of the vectors of each WL iteration
-        self.sigma2 = torch.tensor(0.7, dtype=torch.float32, requires_grad=True) #FIXME
-        self.kappa2 = torch.tensor(1.1, dtype=torch.float32, requires_grad=True) #FIXME
+        
+        self.sigma2 = torch.tensor(3, dtype=torch.float32, requires_grad=True) #FIXME
+        self.kappa2 = torch.tensor(0.05, dtype=torch.float32, requires_grad=True) #FIXME
+        # self.sigma2 = torch.tensor(0.7, dtype=torch.float32, requires_grad=True) #FIXME
+        # self.kappa2 = torch.tensor(1.1, dtype=torch.float32, requires_grad=True) #FIXME
+        
+        self.cached = False
+        self.all_diff_bits = None
+        self.random = True
+        self.permutations = None
             
 
     def initialize(self):
@@ -187,106 +195,141 @@ class Heat(Kernel):
             raise TypeError("input must be an iterable\n")
         else:
             
-            graph_list = X
-
-            def initialize_label_counters(n):
-                return np.zeros(n, dtype=int)
-
-            def map_node(node, label_counters, old_graph, m):
-                label_index = old_graph[1][node]
-                mapped_node = label_index * m + label_counters[label_index]
-                label_counters[label_index] += 1
-                return mapped_node
-
-            def create_new_graph(old_graph, n, m):
-                # Step 1: Initialize a new graph with m*n nodes
-                new_graph = torch.zeros(m*n, m*n, dtype=torch.int8)
+            if self.cached == False:
+            
+                graph_list = X
                 
-                # Initialize a counter for each label
-                label_counters = initialize_label_counters(n)
-
-                # Step 2: Iterate through each node of the old graph
-                for node in old_graph[0].keys():
-
-                    # Map it to a specific section in the new graph
-                    mapped_node = map_node(node, label_counters, old_graph, m)
-
-                    # Step 3: Connect the mapped nodes in the new graph
-                    # the same way they were connected in the old graph
-                    for neighbor, weight in old_graph[0][node].items():
-                        # Get the mapped neighbor
-                        mapped_neighbor = map_node(neighbor, label_counters, old_graph, m)
-                        # Connect the mapped_node and mapped_neighbor in new_graph
-                        new_graph[mapped_node, mapped_neighbor] = weight
-
-                return new_graph
-            
-            # Define your parameters
-            n, m = 6, 9
-            x = 100
-            
-            graph_list = [create_new_graph(graph, n, m) for graph in graph_list]
-            graph_array = torch.stack(graph_list)
-            
-            def generate_groups(n, m):
-                return [list(range(i * m, (i + 1) * m)) for i in range(n)]
-
-            def sample_permutations(n, m, x):
-                groups = generate_groups(n, m)    
-                rand_perms = [
-                    [v for group in groups for v in np.array(
-                        group)[np.random.permutation(len(group))]]
-                    for _ in range(x)
-                ]
-                return rand_perms
-            
-            def generate_permutations(n, m):
-                groups = generate_groups(n, m)
-                perms = [permutations(group, r=len(group)) for group in groups]
-                all_permutations = list(product(*perms))
-                return all_permutations
-
-
-            # Generate all permutations
-            sampled_permutations = torch.tensor(sample_permutations(n, m, x))
-            # sampled_permutations = generate_permutations(n, m)
-
-            @torch.jit.script
-            def compute_all_diff_bits(graph_array, sampled_permutations):
-
-                perm_len = len(sampled_permutations)
-                all_diff_bits = torch.empty(perm_len*perm_len, graph_array.shape[0], graph_array.shape[0], dtype=torch.int8)                         
-                print(graph_array.shape)
-
-                for i in range(len(sampled_permutations)): #tqdm 
-                    x1 = graph_array[:, :, sampled_permutations[i]][:, sampled_permutations[i], :]
+                def mapping_dic(old_graph, n, m):
                     
-                    for j in range(i+1, len(sampled_permutations)):
-                        x2 = graph_array[:, :, sampled_permutations[j]][:, sampled_permutations[j], :]
-            
-                        all_diff_bits[i * perm_len + j, :, :] = x1[:, None].bitwise_xor(x2[None]).sum(dim=(-1, -2)) #FIXME: // 2
-                        all_diff_bits[j * perm_len + i, :, :] = x1[:, None].bitwise_xor(x2[None]).sum(dim=(-1, -2)) #FIXME: // 2
+                    mapping = {}
+                    label_counters = np.zeros(n+2, dtype=int)
+                    
+                    for node in old_graph[0].keys():
+                        label_index = old_graph[1][node]
 
-                return all_diff_bits
-            
-            def compute_kernel(all_diff_bits):
-                # Initialize the kernel
-                kernel = torch.zeros(graph_array.shape[0], graph_array.shape[0])
+                        if label_index in [0, 1]: # Nodes with labels 0 and 1 are mapped to single nodes
+                            mapping[node] = label_index
+                        else:  # Other nodes are mapped according to the original rule
+                            mapping[node] = label_index * m + label_counters[label_index] -2*m + 2
+                            label_counters[label_index] += 1
+                        
+                    return mapping
+
+                def create_new_graph(old_graph, n, m):
+
+                    mapping = mapping_dic(old_graph, n, m)
+                    
+                    # Step 1: Initialize a new graph with m*n nodes
+                    new_graph = torch.zeros(m*n+2, m*n+2, dtype=torch.int8)
+                    
+                    # Step 2: Iterate through each node of the old graph
+                    for node in old_graph[0].keys():
+
+                        # Map it to a specific section in the new graph
+                        mapped_node = mapping[node]
+
+                        # Step 3: Connect the mapped nodes in the new graph
+                        # the same way they were connected in the old graph
+                        for neighbor, weight in old_graph[0][node].items():
+                            # Get the mapped neighbor
+                            mapped_neighbor = mapping[neighbor]
+                            # Connect the mapped_node and mapped_neighbor in new_graph
+                            new_graph[mapped_node, mapped_neighbor] = weight
+
+                    return new_graph
+
+                        
+                # Define your parameters
+                n, m = 3, 7
+                x = 10
                 
-                # Compute the kernel
-                for i in range(len(sampled_permutations)**2):
-                    kernel += torch.square(self.sigma2) * (torch.tanh((torch.square(self.kappa2))/2)**all_diff_bits[i])
+                graph_list = [create_new_graph(graph, n, m) for graph in graph_list]
+                graph_array = torch.stack(graph_list)
                 
-                # Normalize the kernel
-                kernel = kernel / (len(sampled_permutations)**2)
+                def generate_groups(n, m):
+                    return [list(range(i * m, (i + 1) * m)) for i in range(n)]
 
-                return kernel
+                def sample_permutations(groups, x):
+                    rand_perms = [
+                        [v for group in groups for v in np.array(
+                            group)[np.random.permutation(len(group))]]
+                        for _ in range(x)
+                    ]
+                    return rand_perms
+                
+                def generate_permutations(n, m):
+                    groups = generate_groups(n, m)
+                    perms = [permutations(group, r=len(group)) for group in groups]
+                    all_permutations = list(product(*perms))
+                    return all_permutations
 
-            print(colored("I'm being called", "red"))
-            all_diff_bits = compute_all_diff_bits(graph_array, sampled_permutations)
-            K = compute_kernel(all_diff_bits)
 
-        print(colored("I'm being called", "green"))
+                # Generate all permutations
+                groups = [[0], [1], [2, 3, 4, 5, 6, 7, 8], [9, 10, 11, 12, 13, 14, 15], [16, 17, 18, 19, 20, 21, 22]]
+                
+                
+                if self.random == True:
+                    sampled_permutations = torch.tensor(sample_permutations(groups, x))
+                    self.permutations = sampled_permutations
+                    self.random = False
+                else:
+                    sampled_permutations = self.permutations
+                # sampled_permutations = generate_permutations(n, m)
+
+                # @torch.jit.script
+                def compute_all_diff_bits(graph_array, sampled_permutations):
+
+                    perm_len = len(sampled_permutations)
+                    all_diff_bits = torch.zeros(perm_len*perm_len, graph_array.shape[0], graph_array.shape[0], dtype=torch.int8)                         
+
+                    for i in tqdm(range(len(sampled_permutations))): #tqdm
+                        x1 = graph_array[:, :, sampled_permutations[i]][:, sampled_permutations[i], :]
+                        
+                        for j in range(i+1, len(sampled_permutations)):
+                            x2 = graph_array[:, :, sampled_permutations[j]][:, sampled_permutations[j], :]
+                
+                            all_diff_bits[i * perm_len + j, :, :] = x1[:, None].bitwise_xor(x2[None]).sum(dim=(-1, -2)) #FIXME: // 2
+                            all_diff_bits[j * perm_len + i, :, :] = x1[:, None].bitwise_xor(x2[None]).sum(dim=(-1, -2)) #FIXME: // 2
+
+                    return all_diff_bits
+                
+                def compute_kernel(all_diff_bits):
+                    # Initialize the kernel
+                    kernel = torch.zeros(graph_array.shape[0], graph_array.shape[0], requires_grad=True)
+                    
+                    # Compute the kernel
+                    for i in range(len(sampled_permutations)**2):
+                        kernel = kernel + torch.square(self.sigma2) * (torch.tanh((torch.square(self.kappa2))/2)**all_diff_bits[i])
+                    
+                    # Normalize the kernel
+                    kernel = kernel / (len(sampled_permutations)**2)
+
+                    return kernel
+
+                all_diff_bits = compute_all_diff_bits(graph_array, sampled_permutations)
+                K = compute_kernel(all_diff_bits)
+                self.all_diff_bits = all_diff_bits
+                self.cached = True
+
+            else:
+
+                all_diff_bits = self.all_diff_bits
+                
+                def compute_kernel(all_diff_bits):
+                    # Initialize the kernel
+                    kernel = torch.zeros(all_diff_bits.shape[1], all_diff_bits.shape[2], requires_grad=True)
+                    
+                    # Compute the kernel
+                    for i in range(all_diff_bits.shape[0]):
+                        kernel = kernel + torch.square(self.sigma2) * (torch.tanh((torch.square(self.kappa2))/2)**all_diff_bits[i])
+
+                    # Normalize the kernel
+                    kernel = kernel / (all_diff_bits.shape[0])
+
+                    return kernel
+
+                K = compute_kernel(all_diff_bits)
+
         base_graph_kernel = None # empty dummy variable
 
         if self._method_calling == 2:

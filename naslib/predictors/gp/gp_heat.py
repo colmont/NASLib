@@ -9,8 +9,7 @@ from termcolor import colored
 
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *
-from naslib.predictors.gp.gpwl_utils.vertex_histogram import CustomVertexHistogram
-from naslib.predictors.gp.gpwl_utils.heat_kernel_4 import Heat
+from naslib.predictors.gp.gpwl_utils.heat_kernel import Heat
 
 
 def _normalize(y):
@@ -52,7 +51,7 @@ def _compute_pd_inverse(K, jitter=1e-5):
         try:
             jitter_diag = jitter * torch.eye(n, device=K.device) * 10 ** fail_count
             K_ = K + jitter_diag
-            Kc = torch.cholesky(K_)
+            Kc = torch.linalg.cholesky(K_)
             is_successful = True
         except RuntimeError:
             fail_count += 1
@@ -98,26 +97,15 @@ class GraphGP:
         self,
         xtrain,
         ytrain,
-        gkernel,
         space="nasbench101",
-        h="auto",
         noise_var=1e-3,
         num_steps=200,
         max_noise_var=1e-1,
-        max_h=3,
         optimize_noise_var=True,
         node_label="op_name",
     ):
         self.likelihood = noise_var
         self.space = space
-        self.h = h
-
-        if gkernel == "wl":
-            self.wl_base = CustomVertexHistogram, {"sparse": False}
-        elif gkernel == "wloa":
-            self.wl_base = CustomVertexHistogram, {"sparse": False, "oa": True}
-        else:
-            raise NotImplementedError(gkernel + " is not a valid graph kernel choice!")
 
         self.gkernel = None
         # only applicable for the DARTS search space, where we optimise two graphs jointly.
@@ -169,7 +157,6 @@ class GraphGP:
 
         # other hyperparameters
         self.max_noise_var = max_noise_var
-        self.max_h = max_h
         self.optimize_noise_var = optimize_noise_var
 
         self.node_label = node_label
@@ -180,6 +167,8 @@ class GraphGP:
         Xnew,
         full_cov=False,
     ):
+
+        self.gkernel.cached = False
 
         if self.K_i is None:
             raise ValueError("The GraphGP model has not been fit!")
@@ -286,86 +275,48 @@ class GraphGP:
     def fit(self):
 
         xtrain_grakel = self.xtrain_converted
-        # Valid values of h are non-negative integers. Here we test each of them once, and pick the one that leads to
-        # the highest marginal likelihood of the GP model.
-        if self.h == "auto":
-            best_nlml = torch.tensor(np.inf, dtype=torch.float32)
-            best_h = None
-            best_K = None
-            for candidate in [h for h in range(self.max_h + 1)]:
-                gkernel = Heat(base_graph_kernel=self.wl_base, h=candidate)
-                if self.space == "nasbench301" or self.space == "darts":
-                    gkernel_reduce = Heat(
-                        base_graph_kernel=self.wl_base, h=candidate
-                    )
-                    K = (
-                        torch.tensor(
-                            gkernel.fit_transform(xtrain_grakel[0], self.y),
-                            dtype=torch.float32,
-                        )
-                        + torch.tensor(
-                            gkernel_reduce.fit_transform(xtrain_grakel[1], self.y),
-                            dtype=torch.float32,
-                        )
-                    ) / 2.0
-                else:
-                    K = torch.tensor(
-                        gkernel.fit_transform(xtrain_grakel, self.y),
-                        dtype=torch.float32,
-                    )
-                K_i, logDetK = _compute_pd_inverse(K, self.likelihood)
-                nlml = -_compute_log_marginal_likelihood(K_i, logDetK, self.y)
-                if nlml < best_nlml:
-                    best_nlml = nlml
-                    best_h = candidate
-                    best_K = torch.clone(K)
-            K = best_K
-            self.gkernel = Heat(base_graph_kernel=self.wl_base, h=best_h)
-            self.gkernel_reduce = Heat(
-                base_graph_kernel=self.wl_base, h=best_h
-            )
-        else:
-            self.gkernel = Heat(base_graph_kernel=self.wl_base, h=self.h)
-            self.gkernel_reduce = Heat(
-                base_graph_kernel=self.wl_base, h=self.h
-            )
-            if self.space == "nasbench301" or self.space == "darts":
-                K = (
-                    torch.tensor(
-                        self.gkernel.fit_transform(xtrain_grakel[0], self.y),
-                        dtype=torch.float32,
-                    )
-                    + torch.tensor(
-                        self.gkernel_reduce.fit_transform(xtrain_grakel[1], self.y),
-                        dtype=torch.float32,
-                    )
-                ) / 2.0
-            else:
-                K = torch.tensor(
-                    self.gkernel.fit_transform(xtrain_grakel, self.y),
+        self.gkernel = Heat()
+        self.gkernel_reduce = Heat()
+        if self.space == "nasbench301" or self.space == "darts":
+            K = (
+                torch.tensor(
+                    self.gkernel.fit_transform(xtrain_grakel[0], self.y),
                     dtype=torch.float32,
                 )
+                + torch.tensor(
+                    self.gkernel_reduce.fit_transform(xtrain_grakel[1], self.y),
+                    dtype=torch.float32,
+                )
+            ) / 2.0
+        else:
+            K = torch.tensor(
+                self.gkernel.fit_transform(xtrain_grakel, self.y),
+                dtype=torch.float32,
+            )
 
-        # CONDITIONAL on the valid h parameter picked, here we optimise the noise as a hyperparameter using standard
+        # Here we optimise the noise as a hyperparameter using standard
         # gradient-based optimisation. Here by default we use Adam optimizer.
+        print(colored(self.optimize_noise_var, "red"))
         if self.optimize_noise_var:
             likelihood = torch.tensor(
                 self.likelihood, dtype=torch.float32, requires_grad=True
             )
-            optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.1)
+            # optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.01)
+            optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.01)
             for i in range(self.num_steps):
                 optim.zero_grad()
                 K = self.gkernel.fit_transform(xtrain_grakel, self.y)
                 K_i, logDetK = _compute_pd_inverse(K, likelihood) 
                 nlml = -_compute_log_marginal_likelihood(K_i, logDetK, self.y)
                 nlml.backward()
+                print(nlml)
                 print(f"Gradient of sigma2: {self.gkernel.sigma2.grad}")
                 print(f"Gradient of kappa2: {self.gkernel.kappa2.grad}")
-                print()
                 optim.step()
                 print(colored("likelihood: ", "red"), likelihood.item())
                 print(colored("sigma2: ", "red"), self.gkernel.sigma2.item())
                 print(colored("kappa2: ", "red"), self.gkernel.kappa2.item())
+                print()
                 with torch.no_grad():
                     likelihood.clamp_(1e-7, self.max_noise_var)
             # finally
@@ -376,21 +327,20 @@ class GraphGP:
         else:
             # Compute the inverse covariance matrix
             self.K_i, self.logDetK = _compute_pd_inverse(K, self.likelihood)
+            nlml = -_compute_log_marginal_likelihood(self.K_i, self.logDetK, self.y)
+            print(colored("nlml: ", "red"), nlml)
 
 
 class GPHeatPredictor(BaseGPModel):
     def __init__(
         self,
-        kernel_type="wloa",
         ss_type="nasbench201",
         optimize_gp_hyper=False,
-        h=2,
         num_steps=200,
     ):
         super(GPHeatPredictor, self).__init__(
-            None, ss_type, kernel_type, optimize_gp_hyper
+            encoding_type=None, ss_type=ss_type, kernel_type=None, optimize_gp_hyper=optimize_gp_hyper
         )
-        self.h = h
         self.num_steps = num_steps
         self.need_separate_hpo = True
         self.model = None
@@ -419,8 +369,6 @@ class GPHeatPredictor(BaseGPModel):
         self.model = GraphGP(
             X_train,
             y_train,
-            self.kernel_type,
-            h=self.h,
             num_steps=self.num_steps,
             optimize_noise_var=self.optimize_gp_hyper,
             space=self.ss_type,
@@ -444,8 +392,6 @@ class GPHeatPredictor(BaseGPModel):
         self.model = GraphGP(
             xtrain_conv,
             ytrain_transformed,
-            self.kernel_type,
-            h=self.h,
             num_steps=self.num_steps,
             optimize_noise_var=self.optimize_gp_hyper,
             space=self.ss_type,

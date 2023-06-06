@@ -172,9 +172,7 @@ utils.set_seed(config.seed)
 # predictor = supported_predictors[config.predictor]
 predictor = GPHeatPredictor( #TODO: see todo above
         ss_type=config.search_space,
-        kernel_type="wloa",
         optimize_gp_hyper=True,
-        h="auto",
 )
 search_space = supported_search_spaces[config.search_space]
 

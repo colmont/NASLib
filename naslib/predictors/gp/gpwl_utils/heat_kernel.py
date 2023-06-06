@@ -10,6 +10,7 @@ import warnings
 
 import numpy as np
 from termcolor import colored
+import torch
 
 from naslib.predictors.gp.gpwl_utils.vertex_histogram import CustomVertexHistogram
 from sklearn.exceptions import NotFittedError
@@ -90,6 +91,12 @@ class Heat(Kernel):
         self.feature_dims = [
             0,
         ]  # Record the dimensions of the vectors of each WL iteration
+        self.sigma2 = torch.tensor(3, dtype=torch.float32, requires_grad=True) #FIXME
+        self.kappa2 = torch.tensor(0.05, dtype=torch.float32, requires_grad=True) #FIXME
+        # self.sigma2 = torch.tensor(0.7, dtype=torch.float32, requires_grad=True) #FIXME
+        # self.kappa2 = torch.tensor(1.1, dtype=torch.float32, requires_grad=True) #FIXME
+
+            
 
     def initialize(self):
         """Initialize all transformer arguments, needing initialization."""
@@ -182,97 +189,64 @@ class Heat(Kernel):
         if not isinstance(X, collections.Iterable):
             raise TypeError("input must be an iterable\n")
         else:
-            graph_list = list()
-            # Gs_ed, L, distinct_values, extras = dict(), dict(), set(), dict()
-            for (idx, x) in enumerate(iter(X)):
-                is_iter = isinstance(x, collections.Iterable)
-                if is_iter:
-                    x = list(x)
-                if is_iter and (len(x) == 0 or len(x) >= 2):
-                    if len(x) == 0:
-                        warnings.warn("Ignoring empty element on index: " + str(idx))
-                        continue
-                    else:
-                        if len(x) > 2:
-                            extra = tuple()
-                            if len(x) > 3:
-                                extra = tuple(x[3:])
-                            x = Graph(x[0], x[1], x[2], graph_format=self._graph_format)
-                            extra = (
-                                x.get_labels(
-                                    purpose=self._graph_format,
-                                    label_type="edge",
-                                    return_none=True,
-                                ),
-                            ) + extra
-                        else:
-                            x = Graph(x[0], x[1], {}, graph_format=self._graph_format)
-                            extra = tuple()
+            graph_list = X
+    
+            def mapping_dic(old_graph, n, m):
+    
+                mapping = {}
+                label_counters = np.zeros(n, dtype=int)
+                
+                for node in old_graph[0].keys():
+                    label_index = old_graph[1][node]
+                    mapping[node] = label_index * m + label_counters[label_index]
+                    label_counters[label_index] += 1
+                
+                return mapping
 
-                elif type(x) is Graph:
-                    x.desired_format(self._graph_format)
-                    el = x.get_labels(
-                        purpose=self._graph_format, label_type="edge", return_none=True
-                    )
-                    if el is None:
-                        extra = tuple()
-                    else:
-                        extra = (el,)
+            def create_new_graph(old_graph, n=9, m=6):
 
-                else:
-                    raise TypeError(
-                        "each element of X must be either a "
-                        + "graph object or a list with at least "
-                        + "a graph like object and node labels "
-                        + "dict \n"
-                    )
-                x = x.get_adjacency_matrix()
-                graph_list.append(x)
+                mapping = mapping_dic(old_graph, n, m)
+                
+                # Step 1: Initialize a new graph with m*n nodes
+                new_graph = np.zeros((m*n, m*n), dtype=np.int8)
+                
+                # Step 2: Iterate through each node of the old graph
+                for node in old_graph[0].keys():
 
-            def hamming_distance(graph1, graph2):
-                n1, m1 = graph1.shape
-                n2, m2 = graph2.shape
+                    # Map it to a specific section in the new graph
+                    mapped_node = mapping[node]
 
-                # Add dummy nodes to the smaller graph to match the size of the larger graph
-                if n1 < n2:
-                    dummy_nodes = np.zeros((n2-n1, m1), dtype=int)
-                    graph1 = np.vstack((graph1, dummy_nodes))
-                elif n2 < n1:
-                    dummy_nodes = np.zeros((n1-n2, m2), dtype=int)
-                    graph2 = np.vstack((graph2, dummy_nodes))
+                    # Step 3: Connect the mapped nodes in the new graph
+                    # the same way they were connected in the old graph
+                    for neighbor, weight in old_graph[0][node].items():
+                        # Get the mapped neighbor
+                        mapped_neighbor = mapping[neighbor]
+                        # Connect the mapped_node and mapped_neighbor in new_graph
+                        new_graph[mapped_node, mapped_neighbor] = weight
 
-                if m1 < m2:
-                    dummy_nodes = np.zeros((max(n1, n2), m2-m1), dtype=int)
-                    graph1 = np.hstack((graph1, dummy_nodes))
-                elif m2 < m1:
-                    dummy_nodes = np.zeros((max(n1, n2), m1-m2), dtype=int)
-                    graph2 = np.hstack((graph2, dummy_nodes))
+                return new_graph      
 
-                # Compute the Hamming distance between the binary strings
-                binary1 = graph1.flatten().astype(bool)
-                binary2 = graph2.flatten().astype(bool)
-                distance = np.count_nonzero(binary1 != binary2)
+            def differing_bits(adj_matrix1, adj_matrix2):
 
-                return distance
+                # Compute the differing bits
+                diff_bits = np.bitwise_xor(adj_matrix1, adj_matrix2).sum()
 
+                return int(diff_bits)        
 
-            # initialize the matrix
-            K = np.zeros((len(graph_list), len(graph_list)))
+            # initialize the matrix as a torch tensor
+            K = torch.empty(len(graph_list), len(graph_list))
 
-            # convert numpy array to integer numpy array
-            graph_list = [np.array(graph_list[i], dtype=int) for i in range(len(graph_list))]
-
-            sigma2 = 0.5 #FIXME
-            kappa2 = 5 #FIXME
-            
             # compute the bitwise xor operation between all pairs
             for i in range(len(graph_list)):
                 for j in range(i + 1, len(graph_list)):
-                    K[i, j] = sigma2*(tanh(kappa2/2)**hamming_distance(graph_list[i], graph_list[j]))
-                    K[j, i] = K[i, j]
+                    distance_aligned = differing_bits(create_new_graph(graph_list[i]), create_new_graph(graph_list[j]))
+                    K_new = torch.square(self.sigma2) * (torch.tanh((torch.square(self.kappa2))/2)**distance_aligned)
+                    K[i, j] = K_new
+                    K[j, i] = K_new
             
             # replace diagonal elements with 1
-            np.fill_diagonal(K, 1)
+            for i in range(len(graph_list)):
+                K[i, i] = torch.square(self.sigma2)*1
 
         base_graph_kernel = None # empty dummy variable
 
