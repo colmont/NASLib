@@ -3,10 +3,6 @@ import logging
 from naslib.defaults.predictor_evaluator import PredictorEvaluator
 from naslib.utils.encodings import EncodingType
 
-from naslib.predictors.gp.gp_heat import (
-    GPHeatPredictor,
-)  # TODO: write this in a more 'clean' way, by adding it to the list below
-
 from naslib.predictors import (
     BayesianLinearRegression,
     BOHAMIANN,
@@ -32,6 +28,7 @@ from naslib.predictors import (
     XGBoost,
     ZeroCost,
     GPWLPredictor,
+    GPHeatPredictor,
 )
 
 from naslib.search_spaces.core.query_metrics import Metric
@@ -70,6 +67,15 @@ supported_predictors = {
     "gp": GPPredictor(
         encoding_type=EncodingType.ADJACENCY_ONE_HOT,
         hparams_from_file=config.hparams_from_file,
+    ),
+    "gp_heat": GPHeatPredictor(
+        ss_type=config.search_space,
+        optimize_gp_hyper=True,
+        projected=True,
+        num_steps=500,
+        sigma=3.0,
+        kappa=0.05,
+        n_approx=10,
     ),
     "gpwl": GPWLPredictor(
         ss_type=config.search_space,
@@ -202,13 +208,7 @@ dataset_api = get_dataset_api(config.search_space, config.dataset)
 
 # initialize the search space and predictor
 utils.set_seed(config.seed)
-# predictor = supported_predictors[config.predictor]
-predictor = GPHeatPredictor(  # TODO: see todo above
-    ss_type=config.search_space,
-    optimize_gp_hyper=True,
-    projected=True,
-    num_steps=500,
-)
+predictor = supported_predictors[config.predictor]
 search_space = supported_search_spaces[config.search_space]
 
 # initialize the PredictorEvaluator class

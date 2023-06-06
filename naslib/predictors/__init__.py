@@ -4,7 +4,13 @@ from .bnn import BayesianLinearRegression, BOHAMIANN, DNGOPredictor
 from .early_stopping import EarlyStopping
 from .ensemble import Ensemble
 from .gcn import GCNPredictor
-from .gp import GPPredictor, SparseGPPredictor, VarSparseGPPredictor, GPWLPredictor
+from .gp import (
+    GPPredictor,
+    SparseGPPredictor,
+    VarSparseGPPredictor,
+    GPWLPredictor,
+    GPHeatPredictor,
+)
 from .lce import LCEPredictor
 from .lce_m import LCEMPredictor
 from .lcsvr import SVR_Estimator

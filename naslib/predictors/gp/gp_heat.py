@@ -105,10 +105,16 @@ class GraphGP:
         optimize_noise_var=True,
         node_label="op_name",
         projected=False,
+        sigma=3.0,
+        kappa=0.05,
+        n_approx=10,
     ):
         self.likelihood = noise_var
         self.space = space
         self.projected = projected
+        self.sigma = sigma
+        self.kappa = kappa
+        self.n_approx = n_approx
 
         self.gkernel = None
         # only applicable for the DARTS search space, where we optimise two graphs jointly.
@@ -278,11 +284,15 @@ class GraphGP:
         xtrain_grakel = self.xtrain_converted
 
         if self.projected:
-            self.gkernel = ProjHeat()
-            self.gkernel_reduce = ProjHeat()
+            self.gkernel = ProjHeat(
+                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx
+            )
+            self.gkernel_reduce = ProjHeat(
+                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx
+            )
         else:
-            self.gkernel = Heat()
-            self.gkernel_reduce = Heat()
+            self.gkernel = Heat(sigma=self.sigma, kappa=self.kappa)
+            self.gkernel_reduce = Heat(sigma=self.sigma, kappa=self.kappa)
 
         if self.space == "nasbench301" or self.space == "darts":
             K = (
@@ -347,6 +357,9 @@ class GPHeatPredictor(BaseGPModel):
         optimize_gp_hyper=False,
         num_steps=200,
         projected=False,
+        sigma=3.0,
+        kappa=0.05,
+        n_approx=10,
     ):
         super(GPHeatPredictor, self).__init__(
             encoding_type=None,
@@ -358,6 +371,9 @@ class GPHeatPredictor(BaseGPModel):
         self.need_separate_hpo = True
         self.model = None
         self.projected = projected
+        self.sigma = sigma
+        self.kappa = kappa
+        self.n_approx = n_approx
 
     def _convert_data(self, data: list):
         if self.ss_type == "nasbench101":
@@ -387,6 +403,9 @@ class GPHeatPredictor(BaseGPModel):
             optimize_noise_var=self.optimize_gp_hyper,
             space=self.ss_type,
             projected=self.projected,
+            sigma=self.sigma,
+            kappa=self.kappa,
+            n_approx=self.n_approx,
         )
         # fit the model
         self.model.fit()
@@ -410,6 +429,9 @@ class GPHeatPredictor(BaseGPModel):
             optimize_noise_var=self.optimize_gp_hyper,
             space=self.ss_type,
             projected=self.projected,
+            sigma=self.sigma,
+            kappa=self.kappa,
+            n_approx=self.n_approx,
         )
         # fit the model
         self.model.fit()

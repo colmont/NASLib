@@ -3,3 +3,4 @@ from .gp import GPPredictor
 from .sparse_gp import SparseGPPredictor
 from .var_sparse_gp import VarSparseGPPredictor
 from .gpwl import GPWLPredictor
+from .gp_heat import GPHeatPredictor
