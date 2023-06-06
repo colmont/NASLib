@@ -1,23 +1,18 @@
 # Neural Architecture Search with Projected Heat Kernel
----
 
 ## Description
----
 This repository contains the code for the paper "Projected heat kernel: a novel approach for using GPs in NAS". In this paper, we introduce a unique graph kernel, namely the projected heat kernel, which has shown promising results in molecular property prediction tasks, and we explore its application within the neural architecture search (NAS) context.
 
 ## Table of Contents
----
 - [Installation](#installation)
 - [Usage](#usage)
 - [License](#license)
 - [Contact](#contact)
 
 ## Installation
----
 To install the required dependencies, please refer to the [original README.md file](./README_original.md). Our fork does not need any additional dependencies.
 
 ### Usage
----
 To run the GP regression, execute the following command:
 ```bash
 python naslib/runners/predictors/runner.py --config-file naslib/runners/predictors/predictor_config.yaml
@@ -39,9 +34,7 @@ Where `num_steps` is the number of iterations of the GP optimization, `sigma` an
 To customize the specifics of the regression experiment, such as number of training and test points, please refer to the [config file](naslib/runners/predictors/predictor_config.yaml).
 
 ### License
----
 The project is listed under the Apache license. Please see [LICENSE](./LICENSE) for more details.
 
 ### Contact
----
 If you have any questions about our code, or want to report a bug, please raise a GitHub issue.
