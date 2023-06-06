@@ -12,7 +12,7 @@ This repository contains the code for the paper "Projected heat kernel: a novel 
 ## Installation
 To install the required dependencies, please refer to the [original README.md file](./README_original.md). Our fork does not need any additional dependencies.
 
-### Usage
+## Usage
 To run the GP regression, execute the following command:
 ```bash
 python naslib/runners/predictors/runner.py --config-file naslib/runners/predictors/predictor_config.yaml
@@ -33,8 +33,8 @@ Where `num_steps` is the number of iterations of the GP optimization, `sigma` an
 
 To customize the specifics of the regression experiment, such as number of training and test points, please refer to the [config file](naslib/runners/predictors/predictor_config.yaml).
 
-### License
+## License
 The project is listed under the Apache license. Please see [LICENSE](./LICENSE) for more details.
 
-### Contact
+## Contact
 If you have any questions about our code, or want to report a bug, please raise a GitHub issue.
