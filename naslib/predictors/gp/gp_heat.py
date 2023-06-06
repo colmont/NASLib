@@ -9,8 +9,8 @@ from termcolor import colored
 
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *
-from naslib.predictors.gp.gpwl_utils.heat_kernel import HeatKernel as Heat
-from naslib.predictors.gp.gpwl_utils.proj_heat_kernel import HeatKernel as ProjHeat
+from naslib.predictors.gp.gpheat_utils.heat_kernel import HeatKernel as Heat
+from naslib.predictors.gp.gpheat_utils.proj_heat_kernel import HeatKernel as ProjHeat
 
 
 def _normalize(y):
