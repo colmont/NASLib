@@ -28,8 +28,9 @@ class HeatKernel:
     """
 
     def __init__(self, sigma=3, kappa=0.05, n_approx=50):
-        self.sigma = torch.tensor(sigma, dtype=torch.float32, requires_grad=True)
-        self.kappa = torch.tensor(kappa, dtype=torch.float32, requires_grad=True)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.sigma = torch.tensor(sigma, dtype=torch.float32, requires_grad=True, device=self.device)
+        self.kappa = torch.tensor(kappa, dtype=torch.float32, requires_grad=True, device=self.device)
         self.n_approx = n_approx
         self.cached = False
         self.all_diff_bits = None
@@ -76,7 +77,7 @@ class HeatKernel:
         return mapping
 
     def _map_graph(self, old_graph, mapping, num_nodes):
-        new_graph = torch.zeros(num_nodes + 2, num_nodes + 2, dtype=torch.int8)
+        new_graph = torch.zeros(num_nodes + 2, num_nodes + 2, dtype=torch.int8, device=self.device)
 
         for node in old_graph[0].keys():
             mapped_node = mapping[node]
@@ -97,7 +98,7 @@ class HeatKernel:
         ]
         if self.permutations is None:
             self.permutations = torch.tensor(
-                self._sample_permutations(groups, self.n_approx)
+                self._sample_permutations(groups, self.n_approx), device=self.device
             )
 
     def _sample_permutations(self, groups, x):
@@ -118,6 +119,7 @@ class HeatKernel:
             graph_array.shape[0],
             graph_array.shape[0],
             dtype=torch.int8,
+            device=self.device,
         )
 
         for i in tqdm(range(perm_len)):
@@ -134,14 +136,10 @@ class HeatKernel:
                 )
 
         return all_diff_bits
-
+    
     def _compute_kernel(self, all_diff_bits):
-        kernel = torch.zeros(
-            all_diff_bits.shape[1], all_diff_bits.shape[2], requires_grad=True
-        )
-        for i in range(all_diff_bits.shape[0]):
-            kernel = kernel + torch.square(self.sigma) * (
-                torch.tanh((torch.square(self.kappa)) / 2) ** all_diff_bits[i]
-            )
+        kernel = (
+            torch.square(self.sigma) * (torch.tanh((torch.square(self.kappa)) / 2) ** all_diff_bits)
+        ).sum(dim=0)
         kernel /= all_diff_bits.shape[0]
-        return kernel
+        return kernel.to('cpu')

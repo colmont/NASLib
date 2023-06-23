@@ -23,8 +23,9 @@ class HeatKernel:
     """
 
     def __init__(self, sigma=3, kappa=0.05):
-        self.sigma = torch.tensor(sigma, dtype=torch.float32, requires_grad=True)
-        self.kappa = torch.tensor(kappa, dtype=torch.float32, requires_grad=True)
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.sigma = torch.tensor(sigma, dtype=torch.float32, requires_grad=True, device=self.device)
+        self.kappa = torch.tensor(kappa, dtype=torch.float32, requires_grad=True, device=self.device)
         self.cached = False
         self.all_diff_bits = None
 
@@ -68,7 +69,7 @@ class HeatKernel:
         return mapping
 
     def _map_graph(self, old_graph, mapping, num_nodes):
-        new_graph = torch.zeros(num_nodes + 2, num_nodes + 2, dtype=torch.int8)
+        new_graph = torch.zeros(num_nodes + 2, num_nodes + 2, dtype=torch.int8, device=self.device)
 
         for node in old_graph[0].keys():
             mapped_node = mapping[node]
@@ -89,4 +90,4 @@ class HeatKernel:
         kernel = torch.square(self.sigma) * (
             torch.tanh((torch.square(self.kappa)) / 2) ** all_diff_bits
         )
-        return kernel
+        return kernel.to('cpu')

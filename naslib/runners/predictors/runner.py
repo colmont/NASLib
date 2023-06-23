@@ -1,4 +1,5 @@
 import logging
+import torch
 
 from naslib.defaults.predictor_evaluator import PredictorEvaluator
 from naslib.utils.encodings import EncodingType
@@ -75,7 +76,7 @@ supported_predictors = {
         num_steps=500,
         sigma=3.0,
         kappa=0.05,
-        n_approx=10,
+        n_approx=100,
     ),
     "gpwl": GPWLPredictor(
         ss_type=config.search_space,
@@ -198,6 +199,12 @@ supported_search_spaces = {
     "transbench101_macro": TransBench101SearchSpaceMacro(),
     "asr": NasBenchASRSearchSpace(),
 }
+
+# Check whether code is runnin on GPU
+if torch.cuda.is_available():
+    print(f"Computations are running on GPU ({torch.cuda.get_device_name(torch.cuda.current_device())})")
+else:
+    print("Computations are running on CPU")
 
 """
 If the API did not evaluate *all* architectures in the search space, 
