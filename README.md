@@ -10,7 +10,7 @@ This repository contains the code for the paper "Projected heat kernel: a novel 
 - [Contact](#contact)
 
 ## Installation
-To install the required dependencies, please refer to the [original README.md file](./README_original.md). Our fork does not need any additional dependencies.
+To install the required dependencies, please refer to the [original README.md file](./README_original.md). Our fork only needs one additional dependency that can be installed as follows: `pip install simplejson`.
 
 ## Usage
 To run the GP regression, execute the following command:
