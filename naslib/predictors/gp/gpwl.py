@@ -61,6 +61,7 @@ def _compute_pd_inverse(K, jitter=1e-5):
         raise RuntimeError("Gram matrix not positive definite despite of jitter")
     logDetK = -2 * torch.sum(torch.log(torch.diag(Kc)))
     K_i = torch.cholesky_inverse(Kc)
+    # print("fail count: ", fail_count)
     return K_i.float(), logDetK.float()
 
 

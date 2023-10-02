@@ -45,6 +45,14 @@ from naslib.search_spaces import (
 from naslib import utils
 from naslib.utils import setup_logger, get_dataset_api
 
+import yaml
+
+with open("naslib/runners/predictors/gp_config.yaml", 'r') as stream:
+    try:
+        gp_config = yaml.safe_load(stream)
+    except yaml.YAMLError as exc:
+        print(exc)
+
 config = utils.get_config_from_args(config_type="predictor")
 utils.set_seed(config.seed)
 logger = setup_logger(config.save + "/log.log")
@@ -71,18 +79,19 @@ supported_predictors = {
     ),
     "gp_heat": GPHeatPredictor(
         ss_type=config.search_space,
-        optimize_gp_hyper=True,
-        projected=True,
-        num_steps=500,
-        sigma=3.0,
-        kappa=0.05,
-        n_approx=100,
+        optimize_gp_hyper=gp_config['gp_heat']['optimize_gp_hyper'],
+        projected=gp_config['gp_heat']['projected'],
+        num_steps=gp_config['gp_heat']['num_steps'],
+        sigma=gp_config['gp_heat']['sigma'],
+        kappa=gp_config['gp_heat']['kappa'],
+        n_approx=gp_config['gp_heat']['n_approx'],
     ),
     "gpwl": GPWLPredictor(
         ss_type=config.search_space,
-        kernel_type="wloa",
-        optimize_gp_hyper=True,
-        h="auto",
+        kernel_type=gp_config['gpwl']['kernel_type'],
+        optimize_gp_hyper=gp_config['gpwl']['optimize_gp_hyper'],
+        h=gp_config['gpwl']['h'],
+        num_steps=gp_config['gpwl']['num_steps'],
     ),
     "grad_norm": ZeroCost(method_type="grad_norm"),
     "grasp": ZeroCost(method_type="grasp"),

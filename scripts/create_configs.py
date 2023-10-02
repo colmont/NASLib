@@ -299,6 +299,7 @@ def main(args):
                 "fidelity_single": args.fidelity_single,
                 "fidelity_list": fidelity_list,
                 "max_hpo_time": args.max_hpo_time,
+                "hparams_from_file": None,
             }
 
             with open(folder + f"/config_{args.predictor}_{i}.yaml", "w") as fh:
@@ -329,7 +330,7 @@ def main(args):
                     "num_ensemble": 3,
                     "acq_fn_type": "its",
                     "acq_fn_optimization": "random_sampling",
-                    "encoding_type": EncodingType.ADJACENCY_ONE_HOT,
+                    "encoding_type": EncodingType.ADJACENCY_ONE_HOT.value,
                     "num_arches_to_mutate": 5,
                     "max_mutations": 1,
                     "num_candidates": 200,

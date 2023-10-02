@@ -12,6 +12,28 @@ from naslib.predictors.gp.gpwl_utils.convert import *
 from naslib.predictors.gp.gpheat_utils.heat_kernel import HeatKernel as Heat
 from naslib.predictors.gp.gpheat_utils.proj_heat_kernel import HeatKernel as ProjHeat
 
+import torch
+from torch.nn import Module, Parameter
+
+class ConstrainedParameter(Module):
+    def __init__(self, init_value, min_value, max_value):
+        super().__init__()
+        
+        self.min_value = min_value
+        self.max_value = max_value
+        
+        # Initialize the raw parameter, which will be optimized
+        self.raw_param = Parameter(torch.tensor(init_value))
+        
+    def forward(self):
+        # Apply sigmoid to the raw parameter to get it in the range (0, 1)
+        sigmoid_param = torch.sigmoid(self.raw_param)
+        
+        # Scale and shift to the desired range
+        constrained_param = self.min_value + (self.max_value - self.min_value) * sigmoid_param
+        
+        return constrained_param
+
 
 def _normalize(y):
     y_mean = torch.mean(y)
@@ -61,6 +83,7 @@ def _compute_pd_inverse(K, jitter=1e-5):
         raise RuntimeError("Gram matrix not positive definite despite of jitter")
     logDetK = -2 * torch.sum(torch.log(torch.diag(Kc)))
     K_i = torch.cholesky_inverse(Kc)
+    # print("fail count: ", fail_count)
     return K_i.float(), logDetK.float()
 
 
@@ -315,34 +338,29 @@ class GraphGP:
         # gradient-based optimisation. Here by default we use Adam optimizer.
         print(colored(self.optimize_noise_var, "red"))
         if self.optimize_noise_var:
-            likelihood = torch.tensor(
-                self.likelihood, dtype=torch.float32, requires_grad=True
-            )
-            # optim = torch.optim.Adam([likelihood, self.gkernel.sigma2, self.gkernel.kappa2], lr=0.01)
+            likelihood = ConstrainedParameter(self.likelihood, 1e-7, self.max_noise_var)
             optim = torch.optim.Adam(
-                [likelihood, self.gkernel.sigma, self.gkernel.kappa], lr=0.01
+                [likelihood.raw_param, self.gkernel.sigma, self.gkernel.kappa], lr=0.01
             )
             for i in range(self.num_steps):
                 optim.zero_grad()
                 K = self.gkernel.fit_transform(xtrain_grakel, self.y)
-                K_i, logDetK = _compute_pd_inverse(K, likelihood)
+                K_i, logDetK = _compute_pd_inverse(K, likelihood())
                 nlml = -_compute_log_marginal_likelihood(K_i, logDetK, self.y)
                 nlml.backward()
-                print(nlml)
-                print(f"Gradient of sigma2: {self.gkernel.sigma.grad}")
-                print(f"Gradient of kappa2: {self.gkernel.kappa.grad}")
+                print(f"NLML: {nlml.item()}")
+                print(f"Gradient of sigma: {self.gkernel.sigma.grad}")
+                print(f"Gradient of kappa: {self.gkernel.kappa.grad}")
                 optim.step()
-                print(colored("likelihood: ", "red"), likelihood.item())
-                print(colored("sigma2: ", "red"), self.gkernel.sigma.item())
-                print(colored("kappa2: ", "red"), self.gkernel.kappa.item())
+                print(colored("likelihood: ", "red"), likelihood().item())
+                print(colored("sigma: ", "red"), self.gkernel.sigma.item())
+                print(colored("kappa: ", "red"), self.gkernel.kappa.item())
                 print()
-                with torch.no_grad():
-                    likelihood.clamp_(1e-7, self.max_noise_var)
             # finally
-            K_i, logDetK = _compute_pd_inverse(K, likelihood)
+            K_i, logDetK = _compute_pd_inverse(K, likelihood())
             self.K_i = K_i.detach().cpu()
             self.logDetK = logDetK.detach().cpu()
-            self.likelihood = likelihood.item()
+            self.likelihood = likelihood().item()
         else:
             # Compute the inverse covariance matrix
             self.K_i, self.logDetK = _compute_pd_inverse(K, self.likelihood)

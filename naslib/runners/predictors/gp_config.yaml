@@ -1,0 +1,12 @@
+gp_heat:
+  n_approx: 10
+  projected: true
+  kappa: 1.0
+  sigma: 1.0
+  num_steps: 200
+  optimize_gp_hyper: true
+gpwl:
+  h: auto
+  kernel_type: wloa
+  num_steps: 200
+  optimize_gp_hyper: true

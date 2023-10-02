@@ -1,5 +1,6 @@
 import numpy as np
 import copy
+import yaml
 
 from naslib.predictors.predictor import Predictor
 from naslib.predictors.mlp import MLPPredictor
@@ -13,11 +14,17 @@ from naslib.predictors.gp import (
     SparseGPPredictor,
     VarSparseGPPredictor,
     GPWLPredictor,
+    GPHeatPredictor
 )
 from naslib.predictors.omni_ngb import OmniNGBPredictor
 from naslib.predictors.omni_seminas import OmniSemiNASPredictor
 from naslib.utils.encodings import EncodingType
 
+with open("naslib/runners/predictors/gp_config.yaml", 'r') as stream:
+    try:
+        gp_config = yaml.safe_load(stream)
+    except yaml.YAMLError as exc:
+        print(exc)
 
 class Ensemble(Predictor):
     def __init__(
@@ -65,11 +72,21 @@ class Ensemble(Predictor):
             ),
             "gcn": GCNPredictor(ss_type=self.ss_type, encoding_type=EncodingType.GCN),
             "gp": GPPredictor(ss_type=self.ss_type, encoding_type=EncodingType.ADJACENCY_ONE_HOT),
+            "gp_heat": GPHeatPredictor(
+                ss_type=self.ss_type,
+                optimize_gp_hyper=gp_config['gp_heat']['optimize_gp_hyper'],
+                projected=gp_config['gp_heat']['projected'],
+                num_steps=gp_config['gp_heat']['num_steps'],
+                sigma=gp_config['gp_heat']['sigma'],
+                kappa=gp_config['gp_heat']['kappa'],
+                n_approx=gp_config['gp_heat']['n_approx'],
+            ),
             "gpwl": GPWLPredictor(
                 ss_type=self.ss_type,
-                kernel_type="wloa",
-                optimize_gp_hyper=True,
-                h="auto",
+                kernel_type=gp_config['gpwl']['kernel_type'],
+                optimize_gp_hyper=gp_config['gpwl']['optimize_gp_hyper'],
+                h=gp_config['gpwl']['h'],
+                num_steps=gp_config['gpwl']['num_steps'],
             ),
             "mlp": MLPPredictor(
                 ss_type=self.ss_type, encoding_type=EncodingType.ADJACENCY_ONE_HOT

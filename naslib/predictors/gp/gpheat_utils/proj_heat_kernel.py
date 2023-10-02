@@ -139,7 +139,23 @@ class HeatKernel:
     
     def _compute_kernel(self, all_diff_bits):
         kernel = (
-            torch.square(self.sigma) * (torch.tanh((torch.square(self.kappa)) / 2) ** all_diff_bits)
+            torch.square(self.sigma) * (torch.tanh(torch.square(self.kappa) / 2) ** all_diff_bits)
         ).sum(dim=0)
         kernel /= all_diff_bits.shape[0]
         return kernel.to('cpu')
+
+    # #FIXME: upgraded the precision to try and solve numerical issues
+    # def _compute_kernel(self, all_diff_bits):
+    #     # Cast sigma, kappa, and all_diff_bits to float64
+    #     sigma_64 = self.sigma.double()
+    #     kappa_64 = self.kappa.double()
+    #     all_diff_bits_64 = all_diff_bits.double()
+
+    #     kernel = (
+    #         torch.square(sigma_64) * (torch.tanh((torch.square(kappa_64) / 2) ** all_diff_bits_64))
+    #     ).sum(dim=0)
+    #     kernel /= all_diff_bits_64.shape[0]
+    #     # print dtype of kernel
+    #     print("dtype", kernel.dtype) 
+    #     print(torch.tanh((torch.square(kappa_64) / 2) ** torch.max(all_diff_bits_64)))
+    #     return kernel.to('cpu')
