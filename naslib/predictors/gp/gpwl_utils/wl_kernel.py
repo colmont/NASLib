@@ -381,7 +381,6 @@ class WeisfeilerLehman(Kernel):
         else:
             km, self.X = self.parse_input(X)
 
-        print(colored(km.shape, "red"))
         return km
 
     def transform(

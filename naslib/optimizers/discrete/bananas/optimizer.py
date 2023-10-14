@@ -46,7 +46,8 @@ class Bananas(MetaOptimizer):
         self.max_mutations = config.search.max_mutations
         self.num_candidates = config.search.num_candidates
         self.max_zerocost = 1000
-
+        self.gp = (self.predictor_type in ['gpwl', 'gp_heat'])
+        
         self.train_data = []
         self.next_batch = []
         self.history = torch.nn.ModuleList()
@@ -223,7 +224,7 @@ class Bananas(MetaOptimizer):
 
                 # define an acquisition function
                 acq_fn = acquisition_function(
-                    ensemble=ensemble, ytrain=ytrain, acq_fn_type=self.acq_fn_type
+                    ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type 
                 )
 
                 # optimize the acquisition function to output k new architectures

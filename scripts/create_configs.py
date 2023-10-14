@@ -327,7 +327,7 @@ def main(args):
                     "population_size": 30,
                     "num_init": 20,
                     "k": 20,
-                    "num_ensemble": 3,
+                    "num_ensemble": 1,
                     "acq_fn_type": "its",
                     "acq_fn_optimization": "random_sampling",
                     "encoding_type": EncodingType.ADJACENCY_ONE_HOT.value,

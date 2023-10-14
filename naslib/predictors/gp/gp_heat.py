@@ -171,7 +171,7 @@ class GraphGP:
 
         else:
             valid_indices = [i for i in range(len(xtrain)) if len(xtrain[i])]
-            self.x = np.array([xtrain[i] for i in valid_indices])
+            self.x = np.array([xtrain[i] for i in valid_indices], dtype=object)
             self.xtrain_converted = list(
                 graph_from_networkx(
                     self.x,
@@ -277,9 +277,7 @@ class GraphGP:
                 )
             )
             X_full = self.xtrain_converted + Xnew
-            K_full = torch.tensor(
-                self.gkernel.fit_transform(X_full), dtype=torch.float32
-            )
+            K_full = self.gkernel.fit_transform(X_full)
             # Kriging equations
             K_s = K_full[: len(self.x) :, len(self.x) :]
             K_ss = K_full[len(self.x) :, len(self.x) :] + self.likelihood * torch.eye(
@@ -329,14 +327,10 @@ class GraphGP:
                 )
             ) / 2.0
         else:
-            K = torch.tensor(
-                self.gkernel.fit_transform(xtrain_grakel, self.y),
-                dtype=torch.float32,
-            )
+            K = self.gkernel.fit_transform(xtrain_grakel, self.y)
 
         # Here we optimise the noise as a hyperparameter using standard
         # gradient-based optimisation. Here by default we use Adam optimizer.
-        print(colored(self.optimize_noise_var, "red"))
         if self.optimize_noise_var:
             likelihood = ConstrainedParameter(self.likelihood, 1e-7, self.max_noise_var)
             optim = torch.optim.Adam(
@@ -433,8 +427,9 @@ class GPHeatPredictor(BaseGPModel):
         X_test = self._convert_data(input_data)
         mean, cov = self.model.forward(X_test, full_cov=True)
         mean = mean.cpu().detach().numpy()
+        cov = cov.cpu().detach().numpy()
         mean = _untransform(mean)
-        return mean
+        return mean, cov
 
     def fit(self, xtrain, ytrain, train_info=None, params=None, **kwargs):
         xtrain_conv = self._convert_data(xtrain)
@@ -461,4 +456,9 @@ class GPHeatPredictor(BaseGPModel):
 
     def query(self, xtest, info=None):
         """alias for predict"""
-        return self.predict(xtest)
+        mean, cov = self.predict(xtest)
+        return mean
+
+    def query_with_cov(self, xtest, info=None):
+        mean, cov = self.predict(xtest)
+        return mean, cov

@@ -172,10 +172,15 @@ class Ensemble(Predictor):
 
         return train_errors
 
-    def query(self, xtest, info=None):
+    def query(self, xtest, gp, info=None):
         predictions = []
         for i in range(self.num_ensemble):
-            prediction = self.ensemble[i].query(xtest, info)
+            if gp == True:
+                mean, std = self.ensemble[i].query_with_cov(xtest, info)
+                mean, std = np.squeeze(mean), np.squeeze(std)
+                prediction = (mean, std)
+            else:
+                prediction = self.ensemble[i].query(xtest, info)
             predictions.append(prediction)
 
         return np.array(predictions)

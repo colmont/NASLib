@@ -52,7 +52,7 @@ def _compute_pd_inverse(K, jitter=1e-5):
         try:
             jitter_diag = jitter * torch.eye(n, device=K.device) * 10 ** fail_count
             K_ = K + jitter_diag
-            Kc = torch.cholesky(K_)
+            Kc = torch.linalg.cholesky(K_)
             is_successful = True
         except RuntimeError:
             fail_count += 1
@@ -152,7 +152,7 @@ class GraphGP:
 
         else:
             valid_indices = [i for i in range(len(xtrain)) if len(xtrain[i])]
-            self.x = np.array([xtrain[i] for i in valid_indices])
+            self.x = np.array([xtrain[i] for i in valid_indices], dtype=object)
             self.xtrain_converted = list(
                 graph_from_networkx(
                     self.x,
@@ -427,8 +427,9 @@ class GPWLPredictor(BaseGPModel):
         X_test = self._convert_data(input_data)
         mean, cov = self.model.forward(X_test, full_cov=True)
         mean = mean.cpu().detach().numpy()
+        cov = cov.cpu().detach().numpy()
         mean = _untransform(mean)
-        return mean
+        return mean, cov
 
     def fit(self, xtrain, ytrain, train_info=None, params=None, **kwargs):
         # if not isinstance(xtrain[0], nx.DiGraph):
@@ -454,4 +455,9 @@ class GPWLPredictor(BaseGPModel):
 
     def query(self, xtest, info=None):
         """alias for predict"""
-        return self.predict(xtest)
+        mean, cov = self.predict(xtest)
+        return mean
+
+    def query_with_cov(self, xtest, info=None):
+        mean, cov = self.predict(xtest)
+        return mean, cov

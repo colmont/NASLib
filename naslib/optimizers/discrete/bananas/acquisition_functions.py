@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 def acquisition_function(
-    ensemble, ytrain, acq_fn_type="its", explore_factor=0.5, ei_calibration_factor=5.0
+    ensemble, ytrain, gp, acq_fn_type="its", explore_factor=0.5, ei_calibration_factor=5.0
 ):
     """
     input:  trained ensemble
@@ -24,12 +24,19 @@ def acquisition_function(
         # Independent Thompson sampling (ITS) acquisition function
 
         def its(arch_encoding, info=None):
-            predictions = ensemble.query([arch_encoding], info)
-            predictions = np.squeeze(predictions)
-            mean = np.mean(predictions)
-            std = np.std(predictions)
-            sample = np.random.normal(mean, std)
-            return sample
+            if gp == True:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions) 
+                mean, std = predictions[0], predictions[1]
+                sample = np.random.normal(mean, std)
+                return sample
+            else:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions)
+                mean = np.mean(predictions)
+                std = np.std(predictions)
+                sample = np.random.normal(mean, std)
+                return sample
 
         return its
 

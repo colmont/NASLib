@@ -1,5 +1,7 @@
 import logging
 import sys
+
+import torch
 import naslib as nl
 
 from naslib.defaults.predictor_evaluator import PredictorEvaluator
@@ -37,6 +39,11 @@ supported_search_spaces = {
     "nlp": NasBenchNLPSearchSpace(),
 }
 
+# Check whether code is runnin on GPU
+if torch.cuda.is_available():
+    print(f"Computations are running on GPU ({torch.cuda.get_device_name(torch.cuda.current_device())})")
+else:
+    print("Computations are running on CPU")
 
 # load_labeled = (True if config.search_space == 'nasbench301' else False)
 load_labeled = False
