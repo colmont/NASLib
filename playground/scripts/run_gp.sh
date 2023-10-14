@@ -29,7 +29,7 @@ do
     current_datetime=$(date +%Y%m%d_%H%M%S)
 
     # Generate output directory name
-    out_dir="playground/runs/${current_datetime}"
+    out_dir="/cluster/scratch/cdoumont/playground/runs/gp/${current_datetime}"
 
     # Create output directory if it does not exist
     mkdir -p $out_dir
