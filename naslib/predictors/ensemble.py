@@ -155,7 +155,37 @@ class Ensemble(Predictor):
 
     def fit(self, xtrain, ytrain, train_info=None):
         if self.ensemble is None:
-            self.ensemble = self.get_ensemble()
+            if self.predictor_type == "gpwl_heat_random":
+                # randomly choose between gpwl and gp_heat
+                if np.random.rand() < 0.5:
+                    self.predictor_type = "gpwl"
+                else:
+                    self.predictor_type = "gp_heat"
+                self.ensemble = self.get_ensemble()
+                # set predictor type back to gpwl_heat_random
+                self.predictor_type = "gpwl_heat_random"
+            elif self.predictor_type == "gpwl_heat_nlml":
+                # compute nlml for gp_heat and gpwl
+                self.predictor_type = "gp_heat"
+                self.ensemble = self.get_ensemble()
+                for i in range(self.num_ensemble):
+                    train_error, gp_heat_nlml = self.ensemble[i].fit(xtrain, ytrain, train_info, return_nlml=True)
+                self.predictor_type = "gpwl"
+                self.ensemble = self.get_ensemble()
+                for i in range(self.num_ensemble):
+                    train_error, gpwl_nlml = self.ensemble[i].fit(xtrain, ytrain, train_info, return_nlml=True)
+                # choose the one with lower nlml
+                print("gp_heat_nlml: ", gp_heat_nlml)
+                print("gpwl_nlml: ", gpwl_nlml)
+                if gp_heat_nlml < gpwl_nlml:
+                    self.predictor_type = "gp_heat"
+                else:
+                    self.predictor_type = "gpwl"
+                self.ensemble = self.get_ensemble()
+                # set predictor type back to gp_heat_nlml
+                self.predictor_type = "gp_heat_nlml"
+            else:
+                self.ensemble = self.get_ensemble()
 
         if self.hyperparams is None and hasattr(
             self.ensemble[0], "default_hyperparams"

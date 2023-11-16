@@ -44,10 +44,17 @@ def acquisition_function(
         # Upper confidence bound (UCB) acquisition function
 
         def ucb(arch_encoding, info=None):
-            predictions = ensemble.query([arch_encoding], info)
-            mean = np.mean(predictions)
-            std = np.std(predictions)
-            return mean + explore_factor * std
+            if gp == True:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions) 
+                mean, std = predictions[0], predictions[1]
+                return mean + explore_factor * std
+            else:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions)
+                mean = np.mean(predictions)
+                std = np.std(predictions)
+                return mean + explore_factor * std
 
         return ucb
 
@@ -55,14 +62,25 @@ def acquisition_function(
         # Expected improvement (EI) acquisition function
 
         def ei(arch_encoding, info=None):
-            predictions = ensemble.query([arch_encoding], info)
-            mean = np.mean(predictions)
-            std = np.std(predictions)
-            factored_std = std / ei_calibration_factor
-            max_y = ytrain.max()
-            gam = (mean - max_y) / factored_std
-            ei_value = factored_std * (gam * norm.cdf(gam) + norm.pdf(gam))
-            return ei_value
+            if gp == True:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions) 
+                mean, std = predictions[0], predictions[1]
+                factored_std = std / ei_calibration_factor
+                max_y = np.array(ytrain).max()
+                gam = (mean - max_y) / factored_std
+                ei_value = factored_std * (gam * norm.cdf(gam) + norm.pdf(gam))
+                return ei_value
+            else:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions)
+                mean = np.mean(predictions)
+                std = np.std(predictions)
+                factored_std = std / ei_calibration_factor
+                max_y = np.array(ytrain).max()
+                gam = (mean - max_y) / factored_std
+                ei_value = factored_std * (gam * norm.cdf(gam) + norm.pdf(gam))
+                return ei_value
 
         return ei
 

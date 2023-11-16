@@ -370,6 +370,9 @@ class GraphGP:
         else:
             # Compute the inverse covariance matrix
             self.K_i, self.logDetK = _compute_pd_inverse(K, self.likelihood)
+            nlml = -_compute_log_marginal_likelihood(self.K_i, self.logDetK, self.y)
+            print(colored("nlml: ", "red"), nlml)
+        return nlml.item()
 
 
 class GPWLPredictor(BaseGPModel):
@@ -446,12 +449,16 @@ class GPWLPredictor(BaseGPModel):
             space=self.ss_type,
         )
         # fit the model
-        self.model.fit()
+        nlml = self.model.fit()
         print("Finished fitting GP")
         # predict on training data for checking
         train_pred = self.query(xtrain).squeeze()
         train_error = np.mean(abs(train_pred - ytrain))
-        return train_error
+
+        if 'return_nlml' in kwargs:
+            return train_error, nlml
+        else:
+            return train_error
 
     def query(self, xtest, info=None):
         """alias for predict"""

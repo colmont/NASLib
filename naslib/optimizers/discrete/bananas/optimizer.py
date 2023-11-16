@@ -223,9 +223,20 @@ class Bananas(MetaOptimizer):
                 ensemble.fit(xtrain, ytrain)
 
                 # define an acquisition function
-                acq_fn = acquisition_function(
-                    ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type 
-                )
+                if self.acq_fn_type == "its_ei":
+                    if np.random.rand() < 0.5:
+                        self.acq_fn_type = "its"
+                    else:
+                        self.acq_fn_type = "ei"
+                    print("Acquisition function type: ", self.acq_fn_type)
+                    acq_fn = acquisition_function(
+                        ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type 
+                    )
+                    self.acq_fn_type = "its_ei"
+                else:
+                    acq_fn = acquisition_function(
+                        ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type 
+                    )
 
                 # optimize the acquisition function to output k new architectures
                 candidates = self._get_new_candidates(ytrain=ytrain)
