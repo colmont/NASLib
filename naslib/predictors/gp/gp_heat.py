@@ -23,7 +23,7 @@ class ConstrainedParameter(Module):
         self.max_value = max_value
         
         # Initialize the raw parameter, which will be optimized
-        self.raw_param = Parameter(torch.tensor(init_value))
+        self.raw_param = Parameter(torch.tensor(init_value, dtype=torch.float64))
         
     def forward(self):
         # Apply sigmoid to the raw parameter to get it in the range (0, 1)
@@ -70,6 +70,8 @@ def _compute_pd_inverse(K, jitter=1e-5):
     is_successful = False
     fail_count = 0
     max_fail = 3
+    if not torch.allclose(K, K.t()):
+        print("Final K is not symmetric!")
     while fail_count < max_fail and not is_successful:
         try:
             jitter_diag = jitter * torch.eye(n, device=K.device) * 10**fail_count
@@ -83,8 +85,8 @@ def _compute_pd_inverse(K, jitter=1e-5):
         raise RuntimeError("Gram matrix not positive definite despite of jitter")
     logDetK = -2 * torch.sum(torch.log(torch.diag(Kc)))
     K_i = torch.cholesky_inverse(Kc)
-    # print("fail count: ", fail_count)
-    return K_i.float(), logDetK.float()
+    print("fail count: ", fail_count)
+    return K_i, logDetK
 
 
 def _compute_log_marginal_likelihood(
@@ -181,7 +183,7 @@ class GraphGP:
 
         ytrain = np.array(ytrain)[valid_indices]
         self.y_ = deepcopy(
-            torch.tensor(ytrain, dtype=torch.float32),
+            torch.tensor(ytrain, dtype=torch.float64),
         )
         self.y, self.y_mean, self.y_std = _normalize(deepcopy(self.y_))
         # number of steps of training
@@ -255,11 +257,11 @@ class GraphGP:
             K_full = torch.tensor(
                 0.5
                 * torch.tensor(
-                    self.gkernel.fit_transform(X_full[0]), dtype=torch.float32
+                    self.gkernel.fit_transform(X_full[0]), dtype=torch.float64
                 )
                 + 0.5
                 * torch.tensor(
-                    self.gkernel_reduce.fit_transform(X_full[1]), dtype=torch.float32
+                    self.gkernel_reduce.fit_transform(X_full[1]), dtype=torch.float64
                 )
             )
             # Kriging equations
@@ -294,10 +296,10 @@ class GraphGP:
             cov_s = torch.diag(cov_s)
         # replace the invalid architectures with zeros
         mu_s[torch.tensor(invalid_indices, dtype=torch.long)] = torch.tensor(
-            0.0, dtype=torch.float32
+            0.0, dtype=torch.float64
         )
         cov_s[torch.tensor(invalid_indices, dtype=torch.long)] = torch.tensor(
-            0.0, dtype=torch.float32
+            0.0, dtype=torch.float64
         )
         return mu_s, cov_s
 
@@ -319,11 +321,11 @@ class GraphGP:
             K = (
                 torch.tensor(
                     self.gkernel.fit_transform(xtrain_grakel[0], self.y),
-                    dtype=torch.float32,
+                    dtype=torch.float64,
                 )
                 + torch.tensor(
                     self.gkernel_reduce.fit_transform(xtrain_grakel[1], self.y),
-                    dtype=torch.float32,
+                    dtype=torch.float64,
                 )
             ) / 2.0
         else:
@@ -360,6 +362,7 @@ class GraphGP:
             self.K_i, self.logDetK = _compute_pd_inverse(K, self.likelihood)
             nlml = -_compute_log_marginal_likelihood(self.K_i, self.logDetK, self.y)
             print(colored("nlml: ", "red"), nlml)
+        return nlml.item()
 
 
 class GPHeatPredictor(BaseGPModel):
@@ -447,12 +450,16 @@ class GPHeatPredictor(BaseGPModel):
             n_approx=self.n_approx,
         )
         # fit the model
-        self.model.fit()
+        nlml = self.model.fit()
         print("Finished fitting GP")
         # predict on training data for checking
         train_pred = self.query(xtrain).squeeze()
         train_error = np.mean(abs(train_pred - ytrain))
-        return train_error
+
+        if 'return_nlml' in kwargs:
+            return train_error, nlml
+        else:
+            return train_error
 
     def query(self, xtest, info=None):
         """alias for predict"""
