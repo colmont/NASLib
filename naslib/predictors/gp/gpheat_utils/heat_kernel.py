@@ -24,8 +24,8 @@ class HeatKernel:
 
     def __init__(self, sigma=3, kappa=0.05):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.sigma = torch.tensor(sigma, dtype=torch.float32, requires_grad=True, device=self.device)
-        self.kappa = torch.tensor(kappa, dtype=torch.float32, requires_grad=True, device=self.device)
+        self.sigma = torch.tensor(sigma, dtype=torch.float64, requires_grad=True, device=self.device)
+        self.kappa = torch.tensor(kappa, dtype=torch.float64, requires_grad=True, device=self.device)
         self.cached = False
         self.all_diff_bits = None
 
