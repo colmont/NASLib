@@ -308,14 +308,14 @@ class GraphGP:
 
         if self.projected:
             self.gkernel = ProjHeat(
-                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx
+                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx, ss_type=self.space
             )
             self.gkernel_reduce = ProjHeat(
-                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx
+                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx, ss_type=self.space
             )
         else:
-            self.gkernel = Heat(sigma=self.sigma, kappa=self.kappa)
-            self.gkernel_reduce = Heat(sigma=self.sigma, kappa=self.kappa)
+            self.gkernel = Heat(sigma=self.sigma, kappa=self.kappa, ss_type=self.space)
+            self.gkernel_reduce = Heat(sigma=self.sigma, kappa=self.kappa, ss_type=self.space)
 
         if self.space == "nasbench301" or self.space == "darts":
             K = (
