@@ -1,9 +1,11 @@
+import csv
 import json
 import os
 import statistics
 from matplotlib import pyplot as plt
 from matplotlib import cm
 import numpy as np
+from sklearn.metrics import auc
 
 def extract_valid_acc_from_dir(directory):
     """Extract 'valid_acc' lists from errors.json files within a given directory."""
@@ -78,7 +80,10 @@ def process_directories(nasbench101_dir):
     return dirs_to_process, all_valid_accs, all_k_values
 
 def calculate_common_k(all_k_values):
-    return all_k_values[0] if len(set(all_k_values)) == 1 else None
+    if len(set(all_k_values)) == 1:
+        return all_k_values[0]
+    else:
+        raise ValueError("Not all k values are equal")
 
 def prepare_data_for_plotting(all_valid_accs, min_trials):
 
@@ -100,6 +105,7 @@ def process_directories_for_multiple_timestamps(location, timestamps):
 
     for timestamp, dirs_to_process, valid_accs, k_values in all_data:
         common_k = calculate_common_k(k_values)
+        
         valid_accs_prepared = prepare_data_for_plotting(valid_accs, min_trials)
         all_data_prepared.append((timestamp, dirs_to_process, valid_accs_prepared, common_k))
 
@@ -109,6 +115,9 @@ def plot_combined_validation_error_graph(all_data):
     plt.figure(figsize=(12, 6))
     cmap = cm.get_cmap('tab10')
     color_index = 0
+
+    labels_for_ranking = []
+    errors_for_ranking = []    
 
     for timestamp_data in all_data:
         timestamp, dirs_to_process, all_valid_accs, common_k = timestamp_data
@@ -135,6 +144,9 @@ def plot_combined_validation_error_graph(all_data):
             plt.plot(adjusted_time_steps, error, label=f"{labels[i]} - Median Error", color=color)
             plt.fill_between(adjusted_time_steps, error - error_stderr, error + error_stderr, color=color, alpha=0.2) # label=f"{labels[i]} - Standard Error" #TODO: add?
 
+            labels_for_ranking.append(labels[i])
+            errors_for_ranking.append(error)
+
     plt.title("Adjusted Median Validation Errors with Standard Error (Combined)")
     plt.xlabel(f"Adjusted Time Step")
     plt.ylabel("Validation Error (%)")
@@ -148,15 +160,42 @@ def plot_combined_validation_error_graph(all_data):
     plt.savefig(output_path, format='pdf')
     plt.close()
 
+    return labels_for_ranking, errors_for_ranking
 
 def generate_combined_validation_error_graph(location, timestamps):
     all_data_prepared = process_directories_for_multiple_timestamps(location, timestamps)
-    plot_combined_validation_error_graph(all_data_prepared)
+    labels_for_ranking, errors_for_ranking = plot_combined_validation_error_graph(all_data_prepared)
+
+    auc_list = []
+    for i in range(len(errors_for_ranking)):
+        auc_temp = auc(np.arange(len(errors_for_ranking[i])), errors_for_ranking[i])
+        auc_list.append(auc_temp)
+    sorted_indices = np.argsort(auc_list)
+    sorted_labels = [labels_for_ranking[i] for i in sorted_indices]
+    sorted_auc = [auc_list[i] for i in sorted_indices]
+
+    # Save the sorted labels and AUC values to a CSV file
+    csv_filename = "/cluster/home/cdoumont/NASLib/playground/scripts/ranked_labels_and_auc.csv"
+    with open(csv_filename, 'w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(['Label', 'AUC'])  # Writing the headers
+        for label, auc_value in zip(sorted_labels, sorted_auc):
+            csvwriter.writerow([label, auc_value])
+
+    print(f"Saved ranked labels and AUC to {csv_filename}")
 
 location = "/cluster/scratch/cdoumont/playground/runs/bo"
 reference_timestamp = '20231010_120707'
-timestamps = ['20231108_233044', '20231110_110941', '20231110_220314', '20231111_163035', '20231112_125318', '20231113_095926']
-# for timestamp in timestamps:
-#     generate_combined_validation_error_graph(location, [reference_timestamp, timestamp])
-all_timestamps = [reference_timestamp] + timestamps
+different_timestamps = ['20231016_122145', '20231103_101620', '20231103_202325', '20231104_182107', '20231129_000209']
+all_timestamps = []
+
+# # loop over all subdirectories in location
+# for subdir in os.listdir(location):
+#     if os.path.isdir(os.path.join(location, subdir)) and subdir not in different_timestamps:
+#         all_timestamps = [subdir] + all_timestamps
+
+# all_timestamps.extend(['20231127_220729', '20231010_120707']) 
+# all_timestamps.append('20231129_000209')
+all_timestamps.extend(['20231130_123136', '20231127_220729']) 
+
 generate_combined_validation_error_graph(location, all_timestamps)
