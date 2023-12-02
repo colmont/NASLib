@@ -2,200 +2,185 @@ import csv
 import json
 import os
 import statistics
+import logging
+import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import cm
-import numpy as np
 from sklearn.metrics import auc
 
-def extract_valid_acc_from_dir(directory):
-    """Extract 'valid_acc' lists from errors.json files within a given directory."""
-    valid_acc_lists = []
+# Constants
+ERRORS_JSON = "errors.json"
+CIFAR10_DIR = "cifar10"
+NAS_PREDICTORS_DIR = "nas_predictors"
+NASBENCH101_DIR = "nasbench101"
+OUTPUT_PATH = "/cluster/scratch/cdoumont/playground/bo_graphs/"
+CSV_FILENAME = "/cluster/home/cdoumont/NASLib/playground/scripts/ranked_labels_and_auc.csv"
+
+ACC_TYPE = "test_acc" # valid_acc or test_acc
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Create a list with values from errors.json of all trials
+def extract_data_from_dir(directory, data_key, search_key=None):
+    """Extract specified data from errors.json files within a given directory."""
+    data_lists = []
     all_dirs = [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]
     numeric_dirs = [d for d in all_dirs if d.isdigit()]
-    print(f"Found {len(numeric_dirs)} trials in {directory}") 
+    logging.info(f"Found {len(numeric_dirs)} trials in {directory}")
 
     for dir_name in numeric_dirs:
         trial_dir = os.path.join(directory, dir_name)
-        errors_path = os.path.join(trial_dir, "errors.json")
-        
+        errors_path = os.path.join(trial_dir, ERRORS_JSON)
+
         try:
             with open(errors_path, 'r') as file:
                 content = json.load(file)
                 for item in content:
-                    if "valid_acc" in item:
-                        valid_acc_lists.append(item["valid_acc"])
+                    if data_key in item and (not search_key or search_key in item[data_key]):
+                        data_lists.append(item[data_key] if not search_key else item[data_key][search_key])
                         break
-        except FileNotFoundError:
-            print(f"File not found: {errors_path}")
-        except json.JSONDecodeError:
-            print(f"Could not decode JSON from: {errors_path}")
+        except FileNotFoundError as e:
+            logging.warning(f"File not found: {errors_path} - {e}")
+        except json.JSONDecodeError as e:
+            logging.warning(f"Could not decode JSON from: {errors_path} - {e}")
 
-    return valid_acc_lists
+    return data_lists
 
-def extract_k_from_dir(directory):
-    """Extract the value of 'k' from errors.json files within a given directory."""
-    k_values = []
-    all_dirs = [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]
-    numeric_dirs = [d for d in all_dirs if d.isdigit()]
+location = "/cluster/scratch/cdoumont/playground/runs/bo"
+# timestamps = ['20231130_123136', '20231127_220729']
+# timestamps = ['20231103_101620']
+# timestamps = ['20231129_000209']
+timestamps = ['20231130_224014', '20231130_123136']
 
-    for dir_name in numeric_dirs:
-        trial_dir = os.path.join(directory, dir_name)
-        errors_path = os.path.join(trial_dir, "errors.json")
+# Create all trajectories
+all_trajectories = []
+for timestamp in timestamps:
+    nasbench101_dir = os.path.join(location, timestamp, CIFAR10_DIR, NAS_PREDICTORS_DIR, NASBENCH101_DIR)
 
-        try:
-            with open(errors_path, 'r') as file:
-                content = json.load(file)
+    for subdir in os.listdir(nasbench101_dir):
+        if os.path.isdir(os.path.join(nasbench101_dir, subdir)):
+            accs_trials = extract_data_from_dir(os.path.join(nasbench101_dir, subdir), ACC_TYPE)
+            k_values_trials = extract_data_from_dir(os.path.join(nasbench101_dir, subdir), "search", "k")
+            all_trajectories.append((timestamp, subdir, accs_trials, k_values_trials))
 
-                for item in content:
-                    if "search" in item and "k" in item["search"]:
-                        k_values.append(item["search"]["k"])
-                        break
-        except FileNotFoundError:
-            print(f"File not found: {errors_path}")
-        except json.JSONDecodeError:
-            print(f"Could not decode JSON from: {errors_path}")
 
-    return k_values
 
-def find_lowest_number_of_trials(all_data):
-    min_trials = float('inf')
-    for _, _, all_valid_accs, _ in all_data:
-        for valid_accs in all_valid_accs:
-            min_trials = min(min_trials, len(valid_accs))
-    print("Lowest number of trials:", min_trials)
-    return min_trials
 
-def process_directories(nasbench101_dir):
-    dirs_to_process = [d for d in os.listdir(nasbench101_dir) if os.path.isdir(os.path.join(nasbench101_dir, d))]
-    print("Found directories:", dirs_to_process)
-    all_valid_accs = []
-    all_k_values = []
+def calculate_best_accs_so_far(accs_trials):
+    """ Calculate the best (highest) accuracies so far for each trial. """
+    best_accs_so_far = []
+    for trial in accs_trials:
+        best_accs = []
+        current_best = 0
+        for acc in trial:
+            current_best = max(current_best, acc)
+            best_accs.append(current_best)
+        best_accs_so_far.append(best_accs)
+    return best_accs_so_far
 
-    for directory in dirs_to_process:
-        valid_accs = extract_valid_acc_from_dir(os.path.join(nasbench101_dir, directory))
-        all_valid_accs.append(valid_accs)
-        k_values = extract_k_from_dir(os.path.join(nasbench101_dir, directory))
-        all_k_values += k_values
+# Update all_trajectories with best valid accuracies so far
+for i, (timestamp, subdir, accs_trials, k_values_trials) in enumerate(all_trajectories):
+    accs_trials = calculate_best_accs_so_far(accs_trials)
+    updated_trajectory = (timestamp, subdir, accs_trials, k_values_trials)
+    all_trajectories[i] = updated_trajectory
 
-    return dirs_to_process, all_valid_accs, all_k_values
 
-def calculate_common_k(all_k_values):
-    if len(set(all_k_values)) == 1:
-        return all_k_values[0]
+
+
+# Make sure the same number of trials are being used
+min_trials = float('inf')
+for _, _, accs_trials, _ in all_trajectories:
+    min_trials = min(min_trials, len(accs_trials))
+logging.info("Lowest number of trials: {}".format(min_trials))
+
+# # FIXME: Remove this
+# min_trials = 3
+
+for i, (timestamp, subdir, accs_trials, k_values_trials) in enumerate(all_trajectories):
+    updated_accs_trials = accs_trials[:min_trials]
+    updated_trajectory = (timestamp, subdir, updated_accs_trials, k_values_trials)
+    all_trajectories[i] = updated_trajectory
+
+
+# Remove problematic trials
+all_lengths = []
+for _, _, accs_trials, _ in all_trajectories:
+    all_lengths.extend([len(accs) for accs in accs_trials])
+mode_length = statistics.mode(all_lengths)
+
+# Safe removal of problematic trials
+for _, _, accs_trials, _ in all_trajectories:
+    accs_trials[:] = [accs for accs in accs_trials if len(accs) == mode_length]
+
+
+# Check that all k_values are the same
+for _, _, _, k_values_trials in all_trajectories:
+    k_values_set = set(k for k in k_values_trials)
+    if len(k_values_set) == 1:
+        common_k = k_values_set.pop()
     else:
         raise ValueError("Not all k values are equal")
 
-def prepare_data_for_plotting(all_valid_accs, min_trials):
 
-    for i in range(len(all_valid_accs)):
-        all_valid_accs[i] = all_valid_accs[i][:min_trials]
-    
-    return all_valid_accs
+labels_for_ranking = []
+errors_for_ranking = []
 
-def process_directories_for_multiple_timestamps(location, timestamps):
-    all_data = []
-    for timestamp in timestamps:
-        print("Currently handling timestamp:", timestamp)
-        nasbench101_dir = os.path.join(location, timestamp, "cifar10", "nas_predictors", "nasbench101")
-        dirs_to_process, valid_accs, k_values = process_directories(nasbench101_dir)
-        all_data.append((timestamp, dirs_to_process, valid_accs, k_values))
+# Calculate median and standard error of the mean
+for timestamp, subdir, accs_trials, k_values_trials in all_trajectories:
+    error = 100 - np.median(accs_trials, axis=0)
+    error_stderr = np.std(accs_trials, axis=0) / np.sqrt(len(accs_trials))
+    adjusted_time_steps = [j * common_k for j in range(len(error))]
 
-    min_trials = find_lowest_number_of_trials(all_data)
-    all_data_prepared = []
+    labels_for_ranking.append(f"{timestamp}-{subdir}")
+    errors_for_ranking.append(error)
 
-    for timestamp, dirs_to_process, valid_accs, k_values in all_data:
-        common_k = calculate_common_k(k_values)
-        
-        valid_accs_prepared = prepare_data_for_plotting(valid_accs, min_trials)
-        all_data_prepared.append((timestamp, dirs_to_process, valid_accs_prepared, common_k))
+# Sort labels and errors by AUC
+auc_list = [auc(np.arange(len(error)), error) for error in errors_for_ranking]
+sorted_indices = np.argsort(auc_list)
+sorted_labels = [labels_for_ranking[i] for i in sorted_indices]
+sorted_auc = [auc_list[i] for i in sorted_indices]
 
-    return all_data_prepared
+# Save ranked labels and AUC to CSV file
+with open(CSV_FILENAME, 'w', newline='') as csvfile:
+    csvwriter = csv.writer(csvfile)
+    csvwriter.writerow(['Label', 'AUC'])
+    for label, auc_value in zip(sorted_labels, sorted_auc):
+        csvwriter.writerow([label, auc_value])
 
-def plot_combined_validation_error_graph(all_data):
-    plt.figure(figsize=(12, 6))
-    cmap = cm.get_cmap('tab10')
-    color_index = 0
+logging.info(f"Saved ranked labels and AUC to {CSV_FILENAME}")
 
-    labels_for_ranking = []
-    errors_for_ranking = []    
 
-    for timestamp_data in all_data:
-        timestamp, dirs_to_process, all_valid_accs, common_k = timestamp_data
-        labels = [f"{timestamp}-{dir}" for dir in dirs_to_process]
+# Plot the combined validation error graph
+cmap = cm.get_cmap('tab10')
+color_index = 0
 
-        for i, valid_accs in enumerate(all_valid_accs):
-            color = cmap(color_index % cmap.N)
-            # Increment color_index after each plot
-            color_index += 1
+for i, error in enumerate(errors_for_ranking):
+    color = cmap(color_index % cmap.N)
+    color_index += 1
 
-            problematic_indices = []
-            lengths = [len(acc) for acc in valid_accs]
-            mode_length = statistics.mode(lengths)
+    plt.plot(adjusted_time_steps, error, label=f"{labels_for_ranking[i]} - Median Error", color=color)
+    plt.fill_between(adjusted_time_steps, error - error_stderr, error + error_stderr, color=color, alpha=0.2)
 
-            for j in range(len(valid_accs)):
-                if len(valid_accs[j]) != mode_length:
-                    problematic_indices.append(j)
+plt.title("Adjusted Median Validation Errors with Standard Error (Combined)")
+plt.xlabel(f"Adjusted Time Stepsss")
+plt.ylabel("Validation Error (%)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
 
-            valid_accs = [valid_accs[j] for j in range(len(valid_accs)) if j not in problematic_indices]
-            error = 100 - np.median(valid_accs, axis=0)
-            error_stderr = np.std(valid_accs, axis=0) / np.sqrt(len(valid_accs))
-            adjusted_time_steps = [j * common_k for j in range(len(error))]
+output_path = os.path.join(OUTPUT_PATH, "combined.pdf")
+plt.savefig(output_path, format='pdf')
+plt.close()
 
-            plt.plot(adjusted_time_steps, error, label=f"{labels[i]} - Median Error", color=color)
-            plt.fill_between(adjusted_time_steps, error - error_stderr, error + error_stderr, color=color, alpha=0.2) # label=f"{labels[i]} - Standard Error" #TODO: add?
+logging.info(f"Saved combined validation error graph to {output_path}")
 
-            labels_for_ranking.append(labels[i])
-            errors_for_ranking.append(error)
+# Print lowest error found overall
+lowest_error = float('inf')
+lowest_error_label = None
+for label, error in zip(labels_for_ranking, errors_for_ranking):
+    if min(error) < lowest_error:
+        lowest_error = min(error)
+        lowest_error_label = label
 
-    plt.title("Adjusted Median Validation Errors with Standard Error (Combined)")
-    plt.xlabel(f"Adjusted Time Step")
-    plt.ylabel("Validation Error (%)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-
-    # filename = all_data[1][0]
-    filename = "combined"
-    output_path = f"/cluster/scratch/cdoumont/playground/bo_graphs/{filename}.pdf"
-    plt.savefig(output_path, format='pdf')
-    plt.close()
-
-    return labels_for_ranking, errors_for_ranking
-
-def generate_combined_validation_error_graph(location, timestamps):
-    all_data_prepared = process_directories_for_multiple_timestamps(location, timestamps)
-    labels_for_ranking, errors_for_ranking = plot_combined_validation_error_graph(all_data_prepared)
-
-    auc_list = []
-    for i in range(len(errors_for_ranking)):
-        auc_temp = auc(np.arange(len(errors_for_ranking[i])), errors_for_ranking[i])
-        auc_list.append(auc_temp)
-    sorted_indices = np.argsort(auc_list)
-    sorted_labels = [labels_for_ranking[i] for i in sorted_indices]
-    sorted_auc = [auc_list[i] for i in sorted_indices]
-
-    # Save the sorted labels and AUC values to a CSV file
-    csv_filename = "/cluster/home/cdoumont/NASLib/playground/scripts/ranked_labels_and_auc.csv"
-    with open(csv_filename, 'w', newline='') as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['Label', 'AUC'])  # Writing the headers
-        for label, auc_value in zip(sorted_labels, sorted_auc):
-            csvwriter.writerow([label, auc_value])
-
-    print(f"Saved ranked labels and AUC to {csv_filename}")
-
-location = "/cluster/scratch/cdoumont/playground/runs/bo"
-reference_timestamp = '20231010_120707'
-different_timestamps = ['20231016_122145', '20231103_101620', '20231103_202325', '20231104_182107', '20231129_000209']
-all_timestamps = []
-
-# # loop over all subdirectories in location
-# for subdir in os.listdir(location):
-#     if os.path.isdir(os.path.join(location, subdir)) and subdir not in different_timestamps:
-#         all_timestamps = [subdir] + all_timestamps
-
-# all_timestamps.extend(['20231127_220729', '20231010_120707']) 
-# all_timestamps.append('20231129_000209')
-all_timestamps.extend(['20231130_123136', '20231127_220729']) 
-
-generate_combined_validation_error_graph(location, all_timestamps)
+logging.info(f"Lowest error found: {lowest_error} ({lowest_error_label})")
