@@ -5,7 +5,7 @@
 #SBATCH --gres=gpumem:32g
 #SBATCH --time=24:00:00
 #SBATCH --mem-per-cpu=32G
-#SBATCH --output=log3.out
+#SBATCH --output=log.out
 
 source /cluster/home/cdoumont/miniconda3/etc/profile.d/conda.sh
 conda activate naslib
