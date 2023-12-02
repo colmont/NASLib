@@ -176,6 +176,30 @@ class Bananas(MetaOptimizer):
                     model.arch_hash = candidate.get_hash()
                     candidates.append(model)
 
+        elif self.acq_fn_optimization == 'mutation_and_random':
+            # mutate the k best architectures by x
+            best_arch_indices = np.argsort(ytrain)[-self.num_arches_to_mutate:]
+            best_archs = [self.train_data[i].arch for i in best_arch_indices]
+            candidates = []
+            for arch in best_archs:
+                for _ in range(int(self.num_candidates / 2.0 / len(best_archs) / self.max_mutations)):
+                    candidate = arch.clone()
+                    for __ in range(int(self.max_mutations)):
+                        arch = self.search_space.clone()
+                        arch.mutate(candidate, dataset_api=self.dataset_api)
+                        if self.search_space.instantiate_model == True:
+                            arch.parse()
+                        candidate = arch
+
+                    model = torch.nn.Module()
+                    model.arch = candidate
+                    model.arch_hash = candidate.get_hash()
+                    candidates.append(model)
+
+            for _ in range(int(self.num_candidates / 2.0)):
+                model = self._sample_new_model()
+                candidates.append(model)
+
         else:
             logger.info('{} is not yet supported as a acq fn optimizer'.format(
                 self.encoding_type))
