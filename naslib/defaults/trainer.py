@@ -209,9 +209,9 @@ class Trainer(object):
             if after_epoch is not None:
                 after_epoch(e)
 
-        logger.info(f"Saving architectural weight tensors: {self.config.save}/arch_weights.pt")
+        logger.info(f"Saving architectural weight tensors: /cluster/scratch/cdoumont/playground/mammoth/arch_weights.pt")
         if hasattr(self.config, "save_arch_weights") and self.config.save_arch_weights:
-            torch.save(arch_weights, f'{self.config.save}/arch_weights.pt')
+            torch.save(arch_weights, f'/cluster/scratch/cdoumont/playground/mammoth/arch_weights.pt')
             if hasattr(self.config, "plot_arch_weights") and self.config.plot_arch_weights:
                 plot_architectural_weights(self.config, self.optimizer)
 
@@ -296,7 +296,7 @@ class Trainer(object):
 
             if not search_model:
                 search_model = os.path.join(
-                    self.config.save, "search", "model_final.pth"
+                    '/cluster/scratch/cdoumont/playground/mammoth', "search", "model_final.pth"
                 )
             self._setup_checkpointers(search_model)  # required to load the architecture
 
@@ -310,6 +310,9 @@ class Trainer(object):
                 metric=metric, dataset=self.config.dataset, dataset_api=dataset_api
             )
             logger.info("Queried results ({}): {}".format(metric, result))
+            
+            # delete the following directory
+            os.system("rm -rf /cluster/scratch/cdoumont/playground/mammoth/")
             return result
         else:
             best_arch.to(self.device)
@@ -584,11 +587,17 @@ class Trainer(object):
         checkpointables = self.optimizer.get_checkpointables()
         checkpointables.update(add_checkpointables)
 
+        # create save_dir directory
+        if not os.path.exists('/cluster/scratch/cdoumont/playground/mammoth' + "/search"):
+            os.makedirs('/cluster/scratch/cdoumont/playground/mammoth' + "/search")
+        if not os.path.exists('/cluster/scratch/cdoumont/playground/mammoth' + "/eval"):
+            os.makedirs('/cluster/scratch/cdoumont/playground/mammoth' + "/eval")
+
         checkpointer = utils.Checkpointer(
             model=checkpointables.pop("model"),
-            save_dir=self.config.save + "/search"
+            save_dir='/cluster/scratch/cdoumont/playground/mammoth' + "/search"
             if search
-            else self.config.save + "/eval",
+            else '/cluster/scratch/cdoumont/playground/mammoth' + "/eval",
             # **checkpointables #NOTE: this is throwing an Error
         )
 
