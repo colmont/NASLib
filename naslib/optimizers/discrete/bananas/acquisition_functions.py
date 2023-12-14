@@ -88,8 +88,10 @@ def acquisition_function(
         # Expected improvement (EI) acquisition function
 
         def exploit(arch_encoding, info=None):
-            predictions = ensemble.query([arch_encoding], info)
-            return np.mean(predictions)
+            predictions = ensemble.query(xtest=[arch_encoding], gp=False, info=info)
+            predictions = np.squeeze(predictions)
+            mean = np.mean(predictions)
+            return mean
 
         return exploit
 
