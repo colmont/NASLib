@@ -12,6 +12,7 @@ from naslib.optimizers.discrete.bananas.acquisition_functions import (
 from naslib.predictors.ensemble import Ensemble
 from naslib.predictors.zerocost import ZeroCost
 from naslib.predictors.utils.encodings import encode_spec
+from naslib.predictors.gp.gpwl_utils.convert import convert_n201_arch_to_graph
 
 from naslib.search_spaces.core.query_metrics import Metric
 
@@ -147,10 +148,13 @@ class Bananas(MetaOptimizer):
         # optimize the acquisition function to output k new architectures
         candidates = []
         if self.acq_fn_optimization == 'random_sampling':
-
-            for _ in range(self.num_candidates):
+            while len(candidates) < self.num_candidates:
                 # self.search_space.sample_random_architecture(dataset_api=self.dataset_api, load_labeled=self.sample_from_zc_api) # FIXME extend to Zero Cost case
                 model = self._sample_new_model()
+                if self.search_space.space_name == "nasbench201": 
+                    converted_arch = convert_n201_arch_to_graph(model.arch)
+                    if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                        continue
                 model.accuracy = model.arch.query(
                     self.performance_metric, self.dataset, dataset_api=self.dataset_api
                 )
@@ -162,7 +166,8 @@ class Bananas(MetaOptimizer):
             best_archs = [self.train_data[i].arch for i in best_arch_indices]
             candidates = []
             for arch in best_archs:
-                for _ in range(int(self.num_candidates / len(best_archs) / self.max_mutations)):
+                counter = 0
+                while counter < int(self.num_candidates / len(best_archs) / self.max_mutations):
                     candidate = arch.clone()
                     for __ in range(int(self.max_mutations)):
                         arch = self.search_space.clone()
@@ -170,6 +175,12 @@ class Bananas(MetaOptimizer):
                         if self.search_space.instantiate_model == True:
                             arch.parse()
                         candidate = arch
+
+                    if self.search_space.space_name == "nasbench201": 
+                        converted_arch = convert_n201_arch_to_graph(candidate)
+                        if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                            continue
+                    counter += 1
 
                     model = torch.nn.Module()
                     model.arch = candidate
@@ -182,7 +193,8 @@ class Bananas(MetaOptimizer):
             best_archs = [self.train_data[i].arch for i in best_arch_indices]
             candidates = []
             for arch in best_archs:
-                for _ in range(int(self.num_candidates / 2.0 / len(best_archs) / self.max_mutations)):
+                counter = 0
+                while counter < int(self.num_candidates / 2.0 / len(best_archs) / self.max_mutations):
                     candidate = arch.clone()
                     for __ in range(int(self.max_mutations)):
                         arch = self.search_space.clone()
@@ -191,13 +203,23 @@ class Bananas(MetaOptimizer):
                             arch.parse()
                         candidate = arch
 
+                    if self.search_space.space_name == "nasbench201": 
+                        converted_arch = convert_n201_arch_to_graph(candidate)
+                        if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                            continue
+                    counter += 1
+
                     model = torch.nn.Module()
                     model.arch = candidate
                     model.arch_hash = candidate.get_hash()
                     candidates.append(model)
 
-            for _ in range(int(self.num_candidates / 2.0)):
+            while len(candidates) < int(self.num_candidates / 2.0):
                 model = self._sample_new_model()
+                if self.search_space.space_name == "nasbench201": 
+                    converted_arch = convert_n201_arch_to_graph(model.arch)
+                    if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                        continue
                 candidates.append(model)
 
         else:
@@ -246,6 +268,10 @@ class Bananas(MetaOptimizer):
 
                 ensemble.fit(xtrain, ytrain)
 
+                # beta = 3. * torch.sqrt(0.5 * torch.log(torch.tensor(2. * epoch + 1.)))
+                # beta = beta.detach().numpy().item()
+                beta = 0.5
+
                 # define an acquisition function
                 if self.acq_fn_type == "its_ei":
                     if np.random.rand() < 0.5:
@@ -254,12 +280,12 @@ class Bananas(MetaOptimizer):
                         self.acq_fn_type = "ei"
                     print("Acquisition function type: ", self.acq_fn_type)
                     acq_fn = acquisition_function(
-                        ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type 
+                        ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type, explore_factor=beta
                     )
                     self.acq_fn_type = "its_ei"
                 else:
                     acq_fn = acquisition_function(
-                        ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type 
+                        ensemble=ensemble, ytrain=ytrain, gp=self.gp, acq_fn_type=self.acq_fn_type, explore_factor=beta 
                     )
 
                 # optimize the acquisition function to output k new architectures
