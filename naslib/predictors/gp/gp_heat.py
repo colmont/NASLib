@@ -173,7 +173,12 @@ class GraphGP:
 
         else:
             valid_indices = [i for i in range(len(xtrain)) if len(xtrain[i])]
-            self.x = np.array([xtrain[i] for i in valid_indices], dtype=object)
+            temp_list = [xtrain[i] for i in valid_indices]
+            # hacky solution for this issue:
+            # https://stackoverflow.com/questions/75107506/numpy-wrongly-converts-networkx-graphs-to-array
+            self.x = np.empty(len(temp_list), dtype=object)
+            for i in range(len(temp_list)):
+                self.x[i] = temp_list[i]
             self.xtrain_converted = list(
                 graph_from_networkx(
                     self.x,
