@@ -25,9 +25,9 @@ def acquisition_function(
 
         def its(arch_encoding, info=None):
             if gp == True:
-                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
-                predictions = np.squeeze(predictions) 
-                mean, std = predictions[0], predictions[1]
+                predictions = ensemble.query(xtest=arch_encoding, gp=gp, info=info)
+                mean, cov = predictions[0]
+                std = np.sqrt(np.diag(cov))
                 sample = np.random.normal(mean, std)
                 return sample
             else:
@@ -45,9 +45,9 @@ def acquisition_function(
 
         def ucb(arch_encoding, info=None):
             if gp == True:
-                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
-                predictions = np.squeeze(predictions) 
-                mean, std = predictions[0], predictions[1]
+                predictions = ensemble.query(xtest=arch_encoding, gp=gp, info=info)
+                mean, cov = predictions[0]
+                std = np.sqrt(np.diag(cov))
                 return mean + explore_factor * std
             else:
                 predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
@@ -63,9 +63,9 @@ def acquisition_function(
 
         def ei(arch_encoding, info=None):
             if gp == True:
-                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
-                predictions = np.squeeze(predictions) 
-                mean, std = predictions[0], predictions[1]
+                predictions = ensemble.query(xtest=arch_encoding, gp=gp, info=info)
+                mean, cov = predictions[0]
+                std = np.sqrt(np.diag(cov))
                 factored_std = std / ei_calibration_factor
                 max_y = np.array(ytrain).max()
                 gam = (mean - max_y) / factored_std
@@ -88,10 +88,15 @@ def acquisition_function(
         # Expected improvement (EI) acquisition function
 
         def exploit(arch_encoding, info=None):
-            predictions = ensemble.query(xtest=[arch_encoding], gp=False, info=info)
-            predictions = np.squeeze(predictions)
-            mean = np.mean(predictions)
-            return mean
+            if gp == True:
+                predictions = ensemble.query(xtest=arch_encoding, gp=gp, info=info)
+                mean, cov = predictions[0]
+                return mean
+            else:
+                predictions = ensemble.query(xtest=[arch_encoding], gp=gp, info=info)
+                predictions = np.squeeze(predictions)
+                mean = np.mean(predictions)
+                return mean
 
         return exploit
 

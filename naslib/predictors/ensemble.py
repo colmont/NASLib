@@ -213,7 +213,7 @@ class Ensemble(Predictor):
                 prediction = self.ensemble[i].query(xtest, info)
             predictions.append(prediction)
 
-        return np.array(predictions)
+        return predictions if gp else np.array(predictions)
 
     def set_hyperparams(self, params):
         if self.ensemble is None:

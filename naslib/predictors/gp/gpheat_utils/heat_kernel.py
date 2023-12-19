@@ -33,21 +33,23 @@ class HeatKernel:
         self.n = None
         self.m = None
 
-    def fit_transform(self, X, y=None):
-        if not isinstance(X, collections.Iterable):
+    def fit_transform(self, X1, X2, y=None):
+        if not isinstance(X1, collections.Iterable) or not isinstance(X2, collections.Iterable):
             raise TypeError("Input must be an iterable.")
-        X_copy = copy.deepcopy(X)
+        X1_copy = copy.deepcopy(X1)
+        X2_copy = copy.deepcopy(X2)
         if self.ss_type == 'nasbench101':
             self.n = 3
             self.m = 7
         elif self.ss_type == 'nasbench201':
             self.n = 5
-            self.m = 7
-            X_copy = [self._change_nodelabels_nb201(graph) for graph in X_copy]
+            self.m = 6
+            X1_copy = [self._change_nodelabels_nb201(graph) for graph in X1_copy]
+            X2_copy = [self._change_nodelabels_nb201(graph) for graph in X2_copy]
 
         # Input validation and parsing
         if not self.cached:
-            self.all_diff_bits = self._process_input(X_copy)
+            self.all_diff_bits = self._process_input(X1_copy, X2_copy)
             self.cached = True
 
         return self._compute_kernel(self.all_diff_bits)
@@ -58,10 +60,12 @@ class HeatKernel:
             nb201_graph[1][node] = OPS.index(nb201_graph[1][node])
         return nb201_graph
 
-    def _process_input(self, X):
-        graph_list = self._create_new_graphs(X)
-        graph_array = torch.stack(graph_list)
-        return self._compute_all_diff_bits(graph_array)
+    def _process_input(self, X1, X2):
+        graph_list_1 = self._create_new_graphs(X1)
+        graph_list_2 = self._create_new_graphs(X2)
+        graph_array_1 = torch.stack(graph_list_1)
+        graph_array_2 = torch.stack(graph_list_2)
+        return self._compute_all_diff_bits(graph_array_1, graph_array_2)
 
     def _create_new_graphs(self, X):
         return [self._create_new_graph(graph, self.n, self.m) for graph in X]
@@ -99,9 +103,9 @@ class HeatKernel:
 
         return new_graph
 
-    def _compute_all_diff_bits(self, graph_array):
+    def _compute_all_diff_bits(self, graph_array_1, graph_array_2):
         all_diff_bits = (
-            graph_array[:, None].bitwise_xor(graph_array[None]).sum(dim=(-1, -2))
+            graph_array_1[:, None].bitwise_xor(graph_array_2[None]).sum(dim=(-1, -2))
         )
         return all_diff_bits
 

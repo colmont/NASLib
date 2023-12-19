@@ -40,21 +40,23 @@ class HeatKernel:
         self.n = None
         self.m = None
 
-    def fit_transform(self, X, y=None):
-        if not isinstance(X, collections.Iterable):
+    def fit_transform(self, X1, X2, y=None):
+        if not isinstance(X1, collections.Iterable) or not isinstance(X2, collections.Iterable):
             raise TypeError("Input must be an iterable.")
-        X_copy = copy.deepcopy(X)
+        X1_copy = copy.deepcopy(X1)
+        X2_copy = copy.deepcopy(X2)
         if self.ss_type == 'nasbench101':
             self.n = 3
             self.m = 7
         elif self.ss_type == 'nasbench201':
             self.n = 5
-            self.m = 7
-            X_copy = [self._change_nodelabels_nb201(graph) for graph in X_copy]
+            self.m = 6
+            X1_copy = [self._change_nodelabels_nb201(graph) for graph in X1_copy]
+            X2_copy = [self._change_nodelabels_nb201(graph) for graph in X2_copy]
 
         # Input validation and parsing
         if not self.cached:
-            self.all_diff_bits = self._process_input(X_copy)
+            self.all_diff_bits = self._process_input(X1_copy, X2_copy)
             self.cached = True
 
         return self._compute_kernel(self.all_diff_bits)
@@ -65,11 +67,13 @@ class HeatKernel:
             nb201_graph[1][node] = OPS.index(nb201_graph[1][node])
         return nb201_graph
 
-    def _process_input(self, X):
-        graph_list = self._create_new_graphs(X)
-        graph_array = torch.stack(graph_list)
+    def _process_input(self, X1, X2):
+        graph_list_1 = self._create_new_graphs(X1)
+        graph_list_2 = self._create_new_graphs(X2)
+        graph_array_1 = torch.stack(graph_list_1)
+        graph_array_2 = torch.stack(graph_list_2)
         self._generate_permutations()
-        return self._compute_all_diff_bits(graph_array)
+        return self._compute_all_diff_bits(graph_array_1, graph_array_2)
 
     def _create_new_graphs(self, X):
         return [self._create_new_graph(graph, self.n, self.m) for graph in X]
@@ -120,11 +124,11 @@ class HeatKernel:
             groups = [
                 [0],
                 [1],
-                [2, 3, 4, 5, 6, 7, 8],
-                [9, 10, 11, 12, 13, 14, 15],
-                [16, 17, 18, 19, 20, 21, 22],
-                [23, 24, 25, 26, 27, 28, 29],
-                [30, 31, 32, 33, 34, 35, 36],
+                [2, 3, 4, 5, 6, 7],
+                [8, 9, 10, 11, 12, 13],
+                [14, 15, 16, 17, 18, 19],
+                [20, 21, 22, 23, 24, 25],
+                [26, 27, 28, 29, 30, 31],
             ]
         if self.permutations is None:
             self.permutations = torch.tensor(
@@ -142,27 +146,29 @@ class HeatKernel:
         ]
         return rand_perms
 
-    def _compute_all_diff_bits(self, graph_array):
+    def _compute_all_diff_bits(self, graph_array_1, graph_array_2):
         perm_len = len(self.permutations)
         all_diff_bits = torch.zeros(
             perm_len * perm_len,
-            graph_array.shape[0],
-            graph_array.shape[0],
+            graph_array_1.shape[0],
+            graph_array_2.shape[0],
             dtype=torch.int8,
             device=self.device,
         )
 
         for i in tqdm(range(perm_len)):
-            x1 = graph_array[:, :, self.permutations[i]][:, self.permutations[i], :]
+            x1 = graph_array_1[:, :, self.permutations[i]][:, self.permutations[i], :]
+            y1 = graph_array_2[:, :, self.permutations[i]][:, self.permutations[i], :]
 
             for j in range(i + 1, perm_len):
-                x2 = graph_array[:, :, self.permutations[j]][:, self.permutations[j], :]
+                x2 = graph_array_1[:, :, self.permutations[j]][:, self.permutations[j], :]
+                y2 = graph_array_2[:, :, self.permutations[j]][:, self.permutations[j], :]
 
                 all_diff_bits[i * perm_len + j, :, :] = (
-                    x1[:, None].bitwise_xor(x2[None]).sum(dim=(-1, -2))
+                    x1[:, None].bitwise_xor(y2[None]).sum(dim=(-1, -2))
                 )
                 all_diff_bits[j * perm_len + i, :, :] = (
-                    x2[:, None].bitwise_xor(x1[None]).sum(dim=(-1, -2))
+                    x2[:, None].bitwise_xor(y1[None]).sum(dim=(-1, -2))
                 )
 
         return all_diff_bits

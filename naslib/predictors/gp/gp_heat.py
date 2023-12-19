@@ -262,11 +262,11 @@ class GraphGP:
             K_full = torch.tensor(
                 0.5
                 * torch.tensor(
-                    self.gkernel.fit_transform(X_full[0]), dtype=torch.float64
+                    self.gkernel.fit_transform(X_full[0], X_full[0]), dtype=torch.float64
                 )
                 + 0.5
                 * torch.tensor(
-                    self.gkernel_reduce.fit_transform(X_full[1]), dtype=torch.float64
+                    self.gkernel_reduce.fit_transform(X_full[1], X_full[1]), dtype=torch.float64
                 )
             )
             # Kriging equations
@@ -283,13 +283,11 @@ class GraphGP:
                     self.node_label,
                 )
             )
-            X_full = self.xtrain_converted + Xnew
-            K_full = self.gkernel.fit_transform(X_full)
             # Kriging equations
-            K_s = K_full[: len(self.x) :, len(self.x) :]
-            K_ss = K_full[len(self.x) :, len(self.x) :] + self.likelihood * torch.eye(
-                len(Xnew),
-            )
+            K_full = self.gkernel.fit_transform(self.xtrain_converted + Xnew, Xnew)
+            K_s = K_full[: len(self.xtrain_converted), :]
+            K_ss = K_full[len(self.xtrain_converted) :, :] + self.likelihood * torch.eye(len(Xnew))
+
         mu_s = K_s.t() @ self.K_i @ self.y
         cov_s = K_ss - K_s.t() @ self.K_i @ K_s
         cov_s = torch.clamp(cov_s, self.likelihood, np.inf)
@@ -325,16 +323,16 @@ class GraphGP:
         if self.space == "nasbench301" or self.space == "darts":
             K = (
                 torch.tensor(
-                    self.gkernel.fit_transform(xtrain_grakel[0], self.y),
+                    self.gkernel.fit_transform(xtrain_grakel[0], xtrain_grakel[0], self.y),
                     dtype=torch.float64,
                 )
                 + torch.tensor(
-                    self.gkernel_reduce.fit_transform(xtrain_grakel[1], self.y),
+                    self.gkernel_reduce.fit_transform(xtrain_grakel[1], xtrain_grakel[1], self.y),
                     dtype=torch.float64,
                 )
             ) / 2.0
         else:
-            K = self.gkernel.fit_transform(xtrain_grakel, self.y)
+            K = self.gkernel.fit_transform(xtrain_grakel, xtrain_grakel, self.y)
 
         # Here we optimise the noise as a hyperparameter using standard
         # gradient-based optimisation. Here by default we use Adam optimizer.
@@ -345,7 +343,7 @@ class GraphGP:
             )
             for i in range(self.num_steps):
                 optim.zero_grad()
-                K = self.gkernel.fit_transform(xtrain_grakel, self.y)
+                K = self.gkernel.fit_transform(xtrain_grakel, xtrain_grakel, self.y)
                 K_i, logDetK = _compute_pd_inverse(K, likelihood())
                 nlml = -_compute_log_marginal_likelihood(K_i, logDetK, self.y)
                 nlml.backward()
@@ -366,7 +364,7 @@ class GraphGP:
             # Compute the inverse covariance matrix
             self.K_i, self.logDetK = _compute_pd_inverse(K, self.likelihood)
             nlml = -_compute_log_marginal_likelihood(self.K_i, self.logDetK, self.y)
-            print(colored("nlml: ", "red"), nlml)
+            print(colored("NLML: ", "red"), nlml)
         return nlml.item()
 
 

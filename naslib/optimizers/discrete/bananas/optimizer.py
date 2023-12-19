@@ -303,6 +303,8 @@ class Bananas(MetaOptimizer):
                 model.zc_scores = self.query_zc_scores(model.arch)
 
             values = [acq_fn(model.arch, [{'zero_cost_scores': model.zc_scores}]) for model in candidates]
+        elif self.gp == True:
+            values = acq_fn([model.arch for model in candidates])
         else:
             values = [acq_fn(model.arch) for model in candidates]
 
