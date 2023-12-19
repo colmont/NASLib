@@ -10,7 +10,6 @@ from termcolor import colored
 from naslib.predictors.gp import BaseGPModel
 from naslib.predictors.gp.gpwl_utils.convert import *
 from naslib.predictors.gp.gpheat_utils.heat_kernel import HeatKernel as Heat
-from naslib.predictors.gp.gpheat_utils.proj_heat_kernel import HeatKernel as ProjHeat
 
 import torch
 from torch.nn import Module, Parameter
@@ -309,16 +308,12 @@ class GraphGP:
     def fit(self):
         xtrain_grakel = self.xtrain_converted
 
-        if self.projected:
-            self.gkernel = ProjHeat(
-                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx, ss_type=self.space
-            )
-            self.gkernel_reduce = ProjHeat(
-                sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx, ss_type=self.space
-            )
-        else:
-            self.gkernel = Heat(sigma=self.sigma, kappa=self.kappa, ss_type=self.space)
-            self.gkernel_reduce = Heat(sigma=self.sigma, kappa=self.kappa, ss_type=self.space)
+        self.gkernel = Heat(
+            sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx, ss_type=self.space, projected=self.projected
+        )
+        self.gkernel_reduce = Heat(
+            sigma=self.sigma, kappa=self.kappa, n_approx=self.n_approx, ss_type=self.space, projected=self.projected
+        )
 
         if self.space == "nasbench301" or self.space == "darts":
             K = (

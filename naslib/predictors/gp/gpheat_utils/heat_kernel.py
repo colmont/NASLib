@@ -2,13 +2,14 @@ import collections
 import copy
 import numpy as np
 import torch
+from tqdm import tqdm
 
 
 class HeatKernel:
     """
     HeatKernel class is used for Gaussian process regression.
 
-    Heat kernel as described in Borovitskiy et al. (2023). This implementation uses a bit-wise operation
+    Projected heat kernel as described in Borovitskiy et al. (2023). This implementation uses a bit-wise operation
     for efficient computation and also makes use of caching for re-use of similarity computations.
 
     Attributes
@@ -17,21 +18,28 @@ class HeatKernel:
         A hyperparameter in the kernel function.
     kappa : torch.Tensor
         Another hyperparameter in the kernel function.
+    n_approx : int
+        Number of permutations to be generated for graph comparisons.
     cached : bool
         A boolean flag to indicate if the all_diff_bits have been computed and cached.
     all_diff_bits : torch.Tensor
         Tensor storing the difference in bits between graphs. Used for efficient computation of the kernel.
+    permutations : torch.Tensor
+        Tensor storing the permutations of graphs to be compared.
     """
 
-    def __init__(self, sigma=3, kappa=0.05, n_approx=50, ss_type='nasbench101'):
+    def __init__(self, sigma=3, kappa=0.05, n_approx=50, ss_type='nasbench101', projected=False):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.sigma = torch.tensor(sigma, dtype=torch.float64, requires_grad=True, device=self.device)
         self.kappa = torch.tensor(kappa, dtype=torch.float64, requires_grad=True, device=self.device)
+        self.n_approx = n_approx
         self.ss_type = ss_type
         self.cached = False
         self.all_diff_bits = None
+        self.permutations = None
         self.n = None
         self.m = None
+        self.projected = projected
 
     def fit_transform(self, X1, X2, y=None):
         if not isinstance(X1, collections.Iterable) or not isinstance(X2, collections.Iterable):
@@ -65,6 +73,8 @@ class HeatKernel:
         graph_list_2 = self._create_new_graphs(X2)
         graph_array_1 = torch.stack(graph_list_1)
         graph_array_2 = torch.stack(graph_list_2)
+        if self.projected:
+            self._generate_permutations()
         return self._compute_all_diff_bits(graph_array_1, graph_array_2)
 
     def _create_new_graphs(self, X):
@@ -103,14 +113,80 @@ class HeatKernel:
 
         return new_graph
 
-    def _compute_all_diff_bits(self, graph_array_1, graph_array_2):
-        all_diff_bits = (
-            graph_array_1[:, None].bitwise_xor(graph_array_2[None]).sum(dim=(-1, -2))
-        )
-        return all_diff_bits
+    def _generate_permutations(self):
+        if self.ss_type == 'nasbench101':
+            groups = [
+                [0],
+                [1],
+                [2, 3, 4, 5, 6, 7, 8],
+                [9, 10, 11, 12, 13, 14, 15],
+                [16, 17, 18, 19, 20, 21, 22],
+            ]
+        elif self.ss_type == 'nasbench201':
+            groups = [
+                [0],
+                [1],
+                [2, 3, 4, 5, 6, 7],
+                [8, 9, 10, 11, 12, 13],
+                [14, 15, 16, 17, 18, 19],
+                [20, 21, 22, 23, 24, 25],
+                [26, 27, 28, 29, 30, 31],
+            ]
+        if self.permutations is None:
+            self.permutations = torch.tensor(
+                self._sample_permutations(groups, self.n_approx), device=self.device
+            )
 
+    def _sample_permutations(self, groups, x):
+        rand_perms = [
+            [
+                v
+                for group in groups
+                for v in np.array(group)[np.random.permutation(len(group))]
+            ]
+            for _ in range(x)
+        ]
+        return rand_perms
+
+    def _compute_all_diff_bits(self, graph_array_1, graph_array_2):
+        if self.projected:
+            perm_len = len(self.permutations)
+            all_diff_bits = torch.zeros(
+                perm_len * perm_len,
+                graph_array_1.shape[0],
+                graph_array_2.shape[0],
+                dtype=torch.int8,
+                device=self.device,
+            )
+
+            for i in tqdm(range(perm_len)):
+                x1 = graph_array_1[:, :, self.permutations[i]][:, self.permutations[i], :]
+                y1 = graph_array_2[:, :, self.permutations[i]][:, self.permutations[i], :]
+
+                for j in range(i + 1, perm_len):
+                    x2 = graph_array_1[:, :, self.permutations[j]][:, self.permutations[j], :]
+                    y2 = graph_array_2[:, :, self.permutations[j]][:, self.permutations[j], :]
+
+                    all_diff_bits[i * perm_len + j, :, :] = (
+                        x1[:, None].bitwise_xor(y2[None]).sum(dim=(-1, -2))
+                    )
+                    all_diff_bits[j * perm_len + i, :, :] = (
+                        x2[:, None].bitwise_xor(y1[None]).sum(dim=(-1, -2))
+                    )
+
+            return all_diff_bits
+
+        else:
+            all_diff_bits = (
+                graph_array_1[:, None].bitwise_xor(graph_array_2[None]).sum(dim=(-1, -2))
+            )
+            return all_diff_bits 
+    
     def _compute_kernel(self, all_diff_bits):
-        kernel = torch.square(self.sigma) * (
-            torch.tanh((torch.square(self.kappa)) / 2) ** all_diff_bits
+        kernel = (
+            torch.square(self.sigma) * (torch.tanh(torch.square(self.kappa) / 2) ** all_diff_bits)
         )
+        if self.projected:
+            kernel = kernel.sum(dim=0)
+            kernel /= all_diff_bits.shape[0]
         return kernel.to('cpu')
