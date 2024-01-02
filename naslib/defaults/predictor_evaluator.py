@@ -13,6 +13,9 @@ import simplejson as json
 
 from naslib.search_spaces.core.query_metrics import Metric
 from naslib.utils import generate_kfold, cross_validation
+from naslib.predictors.gp.gpwl import GPWLPredictor
+from naslib.predictors.gp.gp_heat import GPHeatPredictor
+from naslib.predictors.gp.gpwl_utils.convert import convert_n201_arch_to_graph
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +148,11 @@ class PredictorEvaluator(object):
             else:
                 arch_hash_map[arch_hash] = True
 
+            if self.search_space.space_name == "nasbench201": 
+                converted_arch = convert_n201_arch_to_graph(arch)
+                if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                    continue
+
             accuracy, train_time, info_dict = self.get_full_arch_info(arch)
             xdata.append(arch)
             ydata.append(accuracy)
@@ -176,6 +184,12 @@ class PredictorEvaluator(object):
                 continue
             else:
                 arch_hash_map[arch_hash] = True
+
+            if self.search_space.space_name == "nasbench201": 
+                converted_arch = convert_n201_arch_to_graph(arch)
+                if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                    continue
+
             accuracy, train_time, info_dict = self.get_full_arch_info(arch)
             xdata.append(arch)
             ydata.append(accuracy)
@@ -204,6 +218,12 @@ class PredictorEvaluator(object):
                 continue
             else:
                 arch_hash_map[arch_hash] = True
+
+            if self.search_space.space_name == "nasbench201": 
+                converted_arch = convert_n201_arch_to_graph(arch)
+                if len(converted_arch) == 0 or converted_arch.number_of_edges() == 0:
+                    continue
+
             accuracy, train_time, info_dict = self.get_full_arch_info(arch)
             xdata.append(arch)
             ydata.append(accuracy)
@@ -315,6 +335,10 @@ class PredictorEvaluator(object):
                 results_dict["hp_" + key] = hyperparams[key]
         results_dict["cv_score"] = cv_score
         
+        if type(self.predictor) in [GPWLPredictor, GPHeatPredictor]:
+            nlml = self.predictor.compute_nlml(xtest, ytest)
+            results_dict["nlml"] = nlml
+
         # note: specific code for zero-cost experiments:
         method_type = None
         if hasattr(self.predictor, 'method_type'):
