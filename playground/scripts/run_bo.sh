@@ -1,5 +1,5 @@
 optimizer=bananas
-predictors=(gpwl gp_heat)
+predictors=(gpwl)
 
 start_seed=$1
 if [ -z "$start_seed" ]
@@ -10,17 +10,17 @@ fi
 # folders:
 base_file=naslib
 current_datetime=$(date +%Y%m%d_%H%M%S)
-out_dir="/cluster/scratch/cdoumont/playground/runs/bo/${current_datetime}"
+out_dir="/cluster/home/cdoumont/NASLib/playground/runs/bo/${current_datetime}"
 mkdir -p $out_dir
 cp naslib/runners/predictors/gp_config.yaml $out_dir
 
 # search space / data:
 search_space=nasbench101
 dataset=cifar10
-search_epochs=100
+search_epochs=160
 
 # trials / seeds:
-trials=100
+trials=20
 end_seed=$(($start_seed + $trials - 1))
 
 # create config files
